@@ -76,7 +76,18 @@ def test_normalize_etf_symbol(value: str, expected: str) -> None:
     assert normalize_etf_symbol(value) == expected
 
 
-@pytest.mark.parametrize("value", ["", "12345", "ABCDEF", "510300-X", "sh510300.SZ"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "12345",
+        "ABCDEF",
+        "510300-X",
+        "sh510300.SZ",
+        "１５９５１６",
+        "١٥٩٥١٦",
+    ],
+)
 def test_normalize_etf_symbol_rejects_invalid_input(value: str) -> None:
     with pytest.raises(ValueError):
         normalize_etf_symbol(value)
@@ -123,6 +134,80 @@ def test_market_service_cache_hit_does_not_call_provider_again(tmp_path: Path) -
     assert len(provider.calls) == 1
     assert second.cache_status == "hit"
     assert len(second.data) == 2
+
+
+def test_market_service_ignores_version_without_commit_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = FakeProvider(make_standard_data())
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+
+    original_replace = Path.replace
+
+    def fail_manifest_replace(path: Path, target: Path) -> Path:
+        if path.name == ".import_result.json.tmp":
+            raise OSError("simulated manifest publication failure")
+        return original_replace(path, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", fail_manifest_replace)
+        with pytest.raises(OSError, match="publication failure"):
+            service.fetch_etf_history(
+                "159516", date(2025, 1, 2), date(2025, 1, 6)
+            )
+
+    assert list((tmp_path / "raw").glob("**/provider_metadata.json"))
+    assert not list((tmp_path / "raw").glob("**/import_result.json"))
+    assert not list((tmp_path / "raw").glob("**/.import_result.json.tmp"))
+
+    replacement = FakeProvider(make_standard_data())
+    recovered = MarketDataService(
+        replacement,
+        tmp_path / "raw",
+        tmp_path / "processed",
+    ).fetch_etf_history("159516", date(2025, 1, 2), date(2025, 1, 6))
+
+    assert recovered.cache_status == "miss"
+    assert len(replacement.calls) == 1
+    assert len(list((tmp_path / "raw").glob("**/import_result.json"))) == 1
+
+
+class OutOfRangeProvider(FakeProvider):
+    def fetch_etf_history(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        period: str = "daily",
+        adjustment: str = "none",
+    ) -> pd.DataFrame:
+        self.calls.append((symbol, start_date, end_date, period, adjustment))
+        return self.data.copy()
+
+
+def test_market_service_rejects_provider_rows_outside_each_missing_range(
+    tmp_path: Path,
+) -> None:
+    provider = OutOfRangeProvider(
+        make_standard_data(["2025-01-02", "2025-01-03"])
+    )
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+    original = service.fetch_etf_history(
+        "159516", date(2025, 1, 2), date(2025, 1, 3)
+    )
+    committed_before = set((tmp_path / "raw").glob("**/import_result.json"))
+    # 01-03 仍在用户总查询区间内，但不在本次缺口 01-04..01-04 内。
+    provider.data = make_standard_data(["2025-01-03", "2025-01-04"])
+
+    with pytest.raises(MarketDataValidationError, match="请求日期范围之外"):
+        service.fetch_etf_history(
+            "159516", date(2025, 1, 2), date(2025, 1, 4)
+        )
+
+    assert set((tmp_path / "raw").glob("**/import_result.json")) == committed_before
+    persisted = pd.read_parquet(original.metadata.processed_path)
+    assert persisted["date"].max() == pd.Timestamp("2025-01-03")
 
 
 def test_market_service_fetches_only_missing_tail(tmp_path: Path) -> None:

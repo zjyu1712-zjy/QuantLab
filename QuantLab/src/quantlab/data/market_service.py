@@ -23,7 +23,7 @@ from quantlab.data.validator import validate_market_data
 SUPPORTED_ADJUSTMENTS = {"none", "qfq", "hfq"}
 SUPPORTED_PERIODS = {"daily"}
 SYMBOL_PATTERN = re.compile(
-    r"^(?:(?P<prefix>sh|sz))?(?P<symbol>\d{6})(?:\.(?P<suffix>sh|sz))?$",
+    r"^(?:(?P<prefix>sh|sz))?(?P<symbol>[0-9]{6})(?:\.(?P<suffix>sh|sz))?$",
     re.IGNORECASE,
 )
 
@@ -112,7 +112,11 @@ class MarketDataService:
         self.logger = logger or logging.getLogger("quantlab.market_data")
 
     def _metadata_paths(self) -> list[Path]:
-        return list(self.raw_dir.glob("**/provider_metadata.json"))
+        return [
+            metadata_path
+            for metadata_path in self.raw_dir.glob("**/provider_metadata.json")
+            if (metadata_path.parent / "import_result.json").is_file()
+        ]
 
     @staticmethod
     def _merge_ranges(
@@ -178,8 +182,20 @@ class MarketDataService:
         candidates: list[tuple[datetime, MarketDataMetadata]] = []
         for metadata_path in self._metadata_paths():
             try:
+                commit_payload = json.loads(
+                    (metadata_path.parent / "import_result.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
                 payload = json.loads(metadata_path.read_text(encoding="utf-8"))
                 metadata = MarketDataMetadata(**payload)
+                if (
+                    commit_payload.get("version", {}).get("version_id")
+                    != metadata.data_version
+                    or commit_payload.get("processed_path")
+                    != metadata.processed_path
+                ):
+                    raise ValueError("行情缓存提交信息不一致")
                 requested_ranges = self._requested_coverage_ranges(metadata)
                 if metadata.requested_ranges is not None:
                     metadata = replace(
@@ -301,7 +317,37 @@ class MarketDataService:
             period=period,
             adjustment=adjustment,
         )
-        return self._standardize_and_validate(data, symbol)
+        standardized = self._standardize_and_validate(data, symbol)
+        returned_dates = standardized["date"].dt.date
+        if (
+            (returned_dates < start_date) | (returned_dates > end_date)
+        ).any():
+            raise MarketDataValidationError(
+                "行情服务返回了请求日期范围之外的数据，系统已停止保存。"
+            )
+        return standardized
+
+    @staticmethod
+    def _publish_commit_manifest(
+        manifest_path: Path,
+        payload: dict[str, object],
+    ) -> None:
+        """原子发布最终提交清单。
+
+        缓存只有在该文件完整出现后才可见；中途失败留下的
+        元数据和数据文件会被安全忽略。
+        """
+        temporary_path = manifest_path.with_name(
+            f".{manifest_path.name}.tmp"
+        )
+        try:
+            temporary_path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temporary_path.replace(manifest_path)
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     def _save_version(
         self,
@@ -353,18 +399,14 @@ class MarketDataService:
             json.dumps(asdict(metadata), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        (raw_version_dir / "import_result.json").write_text(
-            json.dumps(
-                {
-                    "symbol": symbol,
-                    "row_count": len(data),
-                    "processed_path": str(processed_path),
-                    "version": {"version_id": version_id},
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
+        self._publish_commit_manifest(
+            raw_version_dir / "import_result.json",
+            {
+                "symbol": symbol,
+                "row_count": len(data),
+                "processed_path": str(processed_path),
+                "version": {"version_id": version_id},
+            },
         )
         return metadata
 

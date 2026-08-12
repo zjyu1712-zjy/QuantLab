@@ -8,6 +8,7 @@ from quantlab.data.providers import (
     MarketDataProviderResponseError,
 )
 from quantlab.ui.market_data import (
+    get_cached_market_data_provider,
     friendly_market_error,
     import_uploaded_market_history,
     import_uploaded_market_csv,
@@ -16,6 +17,37 @@ from quantlab.ui.market_data import (
     load_market_dataset,
     market_source_label,
 )
+
+
+def test_cached_market_provider_is_reused_across_page_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import quantlab.ui.market_data as market_data_module
+
+    sentinel = object()
+    calls = 0
+
+    def build_provider() -> object:
+        nonlocal calls
+        calls += 1
+        return sentinel
+
+    get_cached_market_data_provider.clear()
+    monkeypatch.setattr(
+        market_data_module,
+        "get_market_data_provider",
+        build_provider,
+        raising=False,
+    )
+    try:
+        first = get_cached_market_data_provider()
+        second = get_cached_market_data_provider()
+    finally:
+        get_cached_market_data_provider.clear()
+
+    assert first is sentinel
+    assert second is sentinel
+    assert calls == 1
 
 
 def test_market_source_label_for_ifind_fetch() -> None:
@@ -115,6 +147,21 @@ def test_market_dataset_catalog_and_load(
     assert records[0].version_id == result.version.version_id
     assert isinstance(restored, pd.DataFrame)
     assert len(restored) == 5
+
+
+def test_market_dataset_catalog_ignores_uncommitted_version(
+    tmp_path: Path,
+) -> None:
+    processed_path = tmp_path / "processed" / "159516" / "incomplete.parquet"
+    processed_path.parent.mkdir(parents=True)
+    pd.DataFrame({"date": ["2025-01-02"]}).to_parquet(processed_path)
+    metadata_path = (
+        tmp_path / "raw" / "ifind" / "incomplete" / "provider_metadata.json"
+    )
+    metadata_path.parent.mkdir(parents=True)
+    metadata_path.write_text("{}", encoding="utf-8")
+
+    assert list_market_datasets(tmp_path / "processed", tmp_path / "raw") == []
 
 
 def test_friendly_market_import_preserves_original_and_normalizes(

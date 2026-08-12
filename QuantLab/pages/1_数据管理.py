@@ -19,7 +19,6 @@ from quantlab.data import (  # noqa: E402
     MarketDataService,
     RESERVED_MARKET_SOURCES,
     SUPPORTED_MARKET_SOURCES,
-    get_market_data_provider,
     normalize_etf_symbol,
 )
 from quantlab.ui import (  # noqa: E402
@@ -33,7 +32,10 @@ from quantlab.ui import (  # noqa: E402
     load_market_dataset,
     require_access,
 )
-from quantlab.ui.market_data import market_source_label  # noqa: E402
+from quantlab.ui.market_data import (  # noqa: E402
+    get_cached_market_data_provider,
+    market_source_label,
+)
 
 
 RAW_MARKET_DIR, PROCESSED_MARKET_DIR = get_market_storage_dirs(PROJECT_ROOT)
@@ -106,7 +108,7 @@ def _render_auto_fetch(symbol: str) -> None:
                 normalized_symbol = normalize_etf_symbol(symbol)
                 st.write("正在检查本地数据并获取缺少的行情")
                 service = MarketDataService(
-                    get_market_data_provider(),
+                    get_cached_market_data_provider(),
                     RAW_MARKET_DIR,
                     PROCESSED_MARKET_DIR,
                     logger=LOGGER.getChild("market_data"),

@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pandas as pd
+import streamlit as st
 
 from quantlab.data.importer import (
     MarketImportResult,
@@ -23,12 +24,20 @@ from quantlab.data.market_service import (
     MarketDataValidationError,
 )
 from quantlab.data.providers import (
+    MarketDataProvider,
     MarketDataProviderError,
     MarketDataProviderNoDataError,
+    get_market_data_provider,
 )
 
 
 PROVIDER_LABELS = {"akshare": "AkShare", "ifind": "iFinD"}
+
+
+@st.cache_resource(show_spinner=False)
+def get_cached_market_data_provider() -> MarketDataProvider:
+    """复用服务端行情连接，使令牌缓存可跨页面操作生效。"""
+    return get_market_data_provider()
 
 
 def market_source_label(provider: str, cache_status: str) -> str:
@@ -227,6 +236,12 @@ def list_market_datasets(
             provider_metadata_paths[0] if provider_metadata_paths else Path()
         )
         row_count: int | None = None
+
+        # import_result.json 是数据版本已完整发布的提交标记。
+        # 写入中断的 Parquet/元数据不应出现在用户数据目录。
+        if not result_path.is_file():
+            continue
+
         imported_at = datetime.fromtimestamp(
             parquet_path.stat().st_mtime,
             tz=timezone.utc,
