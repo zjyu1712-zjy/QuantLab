@@ -27,7 +27,12 @@ class IFindHistoryClient(Protocol):
 
 def to_ifind_etf_code(symbol: str) -> str:
     """Attach the exchange suffix required by iFinD's ETF history endpoint."""
-    if not isinstance(symbol, str) or len(symbol) != 6 or not symbol.isdigit():
+    if (
+        not isinstance(symbol, str)
+        or len(symbol) != 6
+        or not symbol.isascii()
+        or not symbol.isdigit()
+    ):
         raise ValueError("ETF 代码必须是 6 位数字")
     if symbol.startswith(("50", "51", "52", "56", "58")):
         return f"{symbol}.SH"

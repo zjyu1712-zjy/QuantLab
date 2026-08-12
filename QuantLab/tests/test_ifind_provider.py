@@ -70,6 +70,12 @@ def test_to_ifind_etf_code_rejects_non_six_digit_input(symbol: str) -> None:
         to_ifind_etf_code(symbol)
 
 
+@pytest.mark.parametrize("symbol", ["５１０３００", "٥١٠٣٠٠"])
+def test_to_ifind_etf_code_rejects_unicode_digits(symbol: str) -> None:
+    with pytest.raises(ValueError, match="ETF 代码必须是 6 位数字"):
+        to_ifind_etf_code(symbol)
+
+
 def test_provider_fetches_daily_history_in_standard_format() -> None:
     client = FakeIFindClient(IFIND_HISTORY_RESPONSE)
     provider = IFindETFProvider(client)
