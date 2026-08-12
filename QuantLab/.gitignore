@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+
+# Local/server secrets
+.env
+.env.local
+.streamlit/secrets.toml
+!.env.example
+
+data/raw/
+data/processed/
+
+logs/*
+!logs/.gitkeep
