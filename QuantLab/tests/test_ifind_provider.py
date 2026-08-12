@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import date
 
 import pandas as pd
@@ -63,6 +64,12 @@ def test_to_ifind_etf_code_rejects_unsupported_prefix() -> None:
         to_ifind_etf_code("000001")
 
 
+@pytest.mark.parametrize("symbol", ["510300.SH", "510300abc"])
+def test_to_ifind_etf_code_rejects_non_six_digit_input(symbol: str) -> None:
+    with pytest.raises(ValueError):
+        to_ifind_etf_code(symbol)
+
+
 def test_provider_fetches_daily_history_in_standard_format() -> None:
     client = FakeIFindClient(IFIND_HISTORY_RESPONSE)
     provider = IFindETFProvider(client)
@@ -116,6 +123,28 @@ def test_provider_hides_raw_error_response() -> None:
     assert "token" not in str(error.value)
 
 
+def test_provider_rejects_response_without_requested_code() -> None:
+    response = deepcopy(IFIND_HISTORY_RESPONSE)
+    del response["tables"][0]["thscode"]
+    provider = IFindETFProvider(FakeIFindClient(response))
+
+    with pytest.raises(MarketDataProviderResponseError) as error:
+        provider.fetch_etf_history("510300", date(2025, 1, 2), date(2025, 1, 3))
+
+    assert str(error.value) == "行情服务返回内容无法识别。"
+
+
+def test_provider_rejects_response_for_different_code() -> None:
+    response = deepcopy(IFIND_HISTORY_RESPONSE)
+    response["tables"][0]["thscode"] = "159516.SZ"
+    provider = IFindETFProvider(FakeIFindClient(response))
+
+    with pytest.raises(MarketDataProviderResponseError) as error:
+        provider.fetch_etf_history("510300", date(2025, 1, 2), date(2025, 1, 3))
+
+    assert str(error.value) == "行情服务返回内容无法识别。"
+
+
 @pytest.mark.parametrize(
     "response",
     [
@@ -147,7 +176,7 @@ def test_provider_rejects_malformed_response(response: dict[str, object]) -> Non
     "response",
     [
         {"errorcode": 0, "tables": []},
-        {"errorcode": 0, "tables": [{"time": [], "table": {}}]},
+        {"errorcode": 0, "tables": [{"thscode": "510300.SH", "time": [], "table": {}}]},
     ],
 )
 def test_provider_translates_empty_response_to_no_data_error(response: dict[str, object]) -> None:
@@ -162,6 +191,7 @@ def test_provider_leaves_numeric_strings_for_standardization() -> None:
         "errorcode": 0,
         "tables": [
             {
+                "thscode": "510300.SH",
                 "time": ["2025-01-02"],
                 "table": {
                     "open": ["3.95"],

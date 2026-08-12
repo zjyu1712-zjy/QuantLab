@@ -27,6 +27,8 @@ class IFindHistoryClient(Protocol):
 
 def to_ifind_etf_code(symbol: str) -> str:
     """Attach the exchange suffix required by iFinD's ETF history endpoint."""
+    if not isinstance(symbol, str) or len(symbol) != 6 or not symbol.isdigit():
+        raise ValueError("ETF 代码必须是 6 位数字")
     if symbol.startswith(("50", "51", "52", "56", "58")):
         return f"{symbol}.SH"
     if symbol.startswith(("15", "16")):
@@ -73,10 +75,12 @@ class IFindETFProvider(MarketDataProvider):
                 "functionpara": {"Interval": "D", "Fill": "Omit", "CPS": cps},
             },
         )
-        return self._parse_history_response(response)
+        return self._parse_history_response(response, code)
 
     @staticmethod
-    def _parse_history_response(response: dict[str, Any]) -> pd.DataFrame:
+    def _parse_history_response(
+        response: dict[str, Any], expected_code: str
+    ) -> pd.DataFrame:
         if response.get("errorcode") != 0:
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
 
@@ -89,6 +93,8 @@ class IFindETFProvider(MarketDataProvider):
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
 
         result_table = tables[0]
+        if result_table.get("thscode") != expected_code:
+            raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
         dates = result_table.get("time")
         if not isinstance(dates, list):
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
