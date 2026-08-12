@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 import json
 from pathlib import Path
@@ -6,6 +7,7 @@ import pandas as pd
 import pytest
 
 from quantlab.data.market_service import (
+    MarketDataMetadata,
     MarketDataService,
     MarketDataValidationError,
     normalize_etf_symbol,
@@ -480,3 +482,47 @@ def test_market_service_ignores_corrupted_requested_ranges(
 
     assert result.cache_status == "miss"
     assert len(replacement_provider.calls) == 1
+
+
+def test_market_service_merges_ranges_ending_at_date_max_without_overflow() -> None:
+    merged = MarketDataService._merge_ranges(
+        [
+            (date(9999, 12, 30), date.max),
+            (date.max, date.max),
+        ]
+    )
+
+    assert merged == ((date(9999, 12, 30), date.max),)
+
+
+def test_market_service_missing_ranges_handles_date_boundaries_without_overflow() -> None:
+    cached_data = make_standard_data()
+    max_metadata = MarketDataMetadata(
+        symbol="159516",
+        provider="fake",
+        period="daily",
+        adjustment="none",
+        start_date="2025-01-02",
+        end_date="2025-01-06",
+        fetched_at="2025-01-06T00:00:00+00:00",
+        data_version="boundary-max",
+        row_count=3,
+        processed_path="unused.parquet",
+        requested_start_date=date.max.isoformat(),
+        requested_end_date=date.max.isoformat(),
+        requested_ranges=((date.max.isoformat(), date.max.isoformat()),),
+    )
+    min_metadata = replace(
+        max_metadata,
+        data_version="boundary-min",
+        requested_start_date=date.min.isoformat(),
+        requested_end_date=date.min.isoformat(),
+        requested_ranges=((date.min.isoformat(), date.min.isoformat()),),
+    )
+
+    assert MarketDataService._missing_ranges(
+        date.max, date.max, cached_data, max_metadata
+    ) == []
+    assert MarketDataService._missing_ranges(
+        date.min, date.min, cached_data, min_metadata
+    ) == []

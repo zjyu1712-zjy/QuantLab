@@ -122,7 +122,15 @@ class MarketDataService:
         for start, end in sorted(ranges):
             if start > end:
                 raise ValueError("缓存请求覆盖区间无效")
-            if merged and start <= merged[-1][1] + timedelta(days=1):
+            previous_end = merged[-1][1] if merged else None
+            overlaps_or_adjacent = previous_end is not None and (
+                start <= previous_end
+                or (
+                    previous_end < date.max
+                    and start == previous_end + timedelta(days=1)
+                )
+            )
+            if overlaps_or_adjacent:
                 merged[-1] = (merged[-1][0], max(merged[-1][1], end))
             else:
                 merged.append((start, end))
@@ -263,9 +271,9 @@ class MarketDataService:
                 ranges.append(
                     (cursor, min(end_date, covered_start - timedelta(days=1)))
                 )
+            if covered_end >= end_date:
+                return ranges
             cursor = max(cursor, covered_end + timedelta(days=1))
-            if cursor > end_date:
-                break
         if cursor <= end_date:
             ranges.append((cursor, end_date))
         return ranges
