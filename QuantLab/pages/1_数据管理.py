@@ -295,8 +295,9 @@ def _render_supported_formats() -> None:
         )
         st.write("后续预留：" + "、".join(RESERVED_MARKET_SOURCES) + "。")
         st.caption(
-            "Wind、Choice 和 iFinD 面向机构用户且权限复杂，当前不在 QuantLab 范围内。"
+            "iFinD 需要在服务端配置已授权的访问凭证，配置完成后即可使用。"
         )
+        st.caption("Wind 和 Choice 当前暂未接入。")
 
 
 def _render_saved_assets() -> None:

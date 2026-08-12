@@ -33,7 +33,8 @@ PROVIDER_LABELS = {"akshare": "AkShare", "ifind": "iFinD"}
 
 def market_source_label(provider: str, cache_status: str) -> str:
     """把内部行情来源和缓存状态转换为用户可读文案。"""
-    label = PROVIDER_LABELS.get(provider, provider)
+    provider_key = provider.strip().lower() if isinstance(provider, str) else ""
+    label = PROVIDER_LABELS.get(provider_key, "其他行情服务")
     if cache_status == "hit":
         return f"本地数据（{label}）"
     return label

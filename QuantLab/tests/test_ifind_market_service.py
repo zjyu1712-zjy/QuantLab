@@ -46,17 +46,32 @@ def test_ifind_provider_flows_through_service_and_cache(tmp_path: Path) -> None:
     )
 
     first = service.fetch_etf_history(
-        "510300", date(2025, 1, 2), date(2025, 1, 3)
+        "510300", date(2025, 1, 1), date(2025, 1, 4)
     )
     second = service.fetch_etf_history(
-        "510300", date(2025, 1, 2), date(2025, 1, 3)
+        "510300", date(2025, 1, 1), date(2025, 1, 4)
     )
 
     assert first.cache_status == "miss"
-    assert first.fetched_ranges == (("2025-01-02", "2025-01-03"),)
+    assert first.fetched_ranges == (("2025-01-01", "2025-01-04"),)
     assert second.cache_status == "hit"
     assert second.fetched_ranges == ()
-    assert len(client.calls) == 1
+    assert client.calls == [
+        (
+            "/api/v1/cmd_history_quotation",
+            {
+                "codes": "510300.SH",
+                "indicators": "open,high,low,close,volume",
+                "startdate": "2025-01-01",
+                "enddate": "2025-01-04",
+                "functionpara": {
+                    "Interval": "D",
+                    "Fill": "Omit",
+                    "CPS": "1",
+                },
+            },
+        )
+    ]
     assert second.data.equals(first.data)
 
     metadata = first.metadata
@@ -66,6 +81,8 @@ def test_ifind_provider_flows_through_service_and_cache(tmp_path: Path) -> None:
     assert metadata.adjustment == "none"
     assert metadata.start_date == "2025-01-02"
     assert metadata.end_date == "2025-01-03"
+    assert metadata.requested_start_date == "2025-01-01"
+    assert metadata.requested_end_date == "2025-01-04"
     assert datetime.fromisoformat(metadata.fetched_at).tzinfo is not None
     assert metadata.data_version
     assert metadata.row_count == 2
@@ -87,4 +104,6 @@ def test_ifind_provider_flows_through_service_and_cache(tmp_path: Path) -> None:
         "data_version": metadata.data_version,
         "row_count": 2,
         "processed_path": metadata.processed_path,
+        "requested_start_date": "2025-01-01",
+        "requested_end_date": "2025-01-04",
     }

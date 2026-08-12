@@ -25,6 +25,18 @@ def test_market_source_label_for_akshare_fetch() -> None:
     assert market_source_label("akshare", "miss") == "AkShare"
 
 
+def test_market_source_label_for_extended_ifind_data() -> None:
+    assert market_source_label("ifind", "extended") == "iFinD"
+
+
+def test_market_source_label_hides_unknown_provider_key() -> None:
+    assert market_source_label("internal-provider-key", "miss") == "其他行情服务"
+
+
+def test_market_source_label_handles_empty_cached_provider() -> None:
+    assert market_source_label("", "hit") == "本地数据（其他行情服务）"
+
+
 def test_uploaded_market_csv_runs_existing_import_pipeline(
     tmp_path: Path,
 ) -> None:
