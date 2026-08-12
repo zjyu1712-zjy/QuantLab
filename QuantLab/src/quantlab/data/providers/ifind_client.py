@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
+import math
 import time
 from typing import Any, Protocol
 
@@ -60,15 +61,24 @@ class IFindQuantAPIClient:
     ) -> None:
         if not refresh_token.strip():
             raise ValueError("刷新令牌不能为空")
-        if timeout_seconds <= 0:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not math.isfinite(timeout_seconds)
+            or timeout_seconds <= 0
+        ):
             raise ValueError("请求超时时间必须大于 0")
-        if max_attempts < 1:
+        if (
+            isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or max_attempts < 1
+        ):
             raise ValueError("请求次数至少为 1")
         if retry_delay_seconds < 0:
             raise ValueError("重试等待时间不能为负数")
 
         self._refresh_token = refresh_token
-        self._transport = transport or requests.Session()
+        self._transport = transport if transport is not None else requests.Session()
         self._timeout_seconds = timeout_seconds
         self._max_attempts = max_attempts
         self._retry_delay_seconds = retry_delay_seconds
@@ -122,12 +132,16 @@ class IFindQuantAPIClient:
         if response.status_code >= 400:
             raise MarketDataProviderUnavailable("行情服务暂时不可用，请稍后重试。")
 
+        invalid_response = False
         try:
             access_token = response.json()["data"]["access_token"]
-        except (KeyError, TypeError, ValueError) as error:
+        except (KeyError, TypeError, ValueError):
+            invalid_response = True
+            access_token = None
+        if invalid_response:
             raise MarketDataProviderResponseError(
                 "行情服务返回内容无法识别。"
-            ) from None
+            )
         if not isinstance(access_token, str) or not access_token:
             raise MarketDataProviderResponseError("行情服务返回内容无法识别。")
 
@@ -155,6 +169,7 @@ class IFindQuantAPIClient:
     ) -> HTTPResponse:
         url = f"{IFIND_BASE_URL}{path}"
         for attempt in range(1, self._max_attempts + 1):
+            failure: MarketDataProviderUnavailable | MarketDataProviderTimeout | None = None
             try:
                 response = self._transport.post(
                     url,
@@ -162,20 +177,20 @@ class IFindQuantAPIClient:
                     json=payload,
                     timeout=self._timeout_seconds,
                 )
-            except requests.Timeout as error:
+            except requests.Timeout:
                 if attempt == self._max_attempts:
-                    raise MarketDataProviderTimeout(
+                    failure = MarketDataProviderTimeout(
                         "行情服务连接超时，请稍后重试。"
-                    ) from None
-            except requests.ConnectionError as error:
+                    )
+            except requests.ConnectionError:
                 if attempt == self._max_attempts:
-                    raise MarketDataProviderUnavailable(
+                    failure = MarketDataProviderUnavailable(
                         "行情服务暂时不可用，请稍后重试。"
-                    ) from None
-            except requests.RequestException as error:
-                raise MarketDataProviderUnavailable(
+                    )
+            except requests.RequestException:
+                failure = MarketDataProviderUnavailable(
                     "行情服务暂时不可用，请稍后重试。"
-                ) from None
+                )
             else:
                 if response.status_code == 429:
                     if attempt == self._max_attempts:
@@ -190,6 +205,8 @@ class IFindQuantAPIClient:
                 else:
                     return response
 
+            if failure is not None:
+                raise failure
             if attempt < self._max_attempts:
                 self._sleep(self._retry_delay_seconds)
 
@@ -199,12 +216,16 @@ class IFindQuantAPIClient:
     def _response_json(response: HTTPResponse) -> dict[str, Any]:
         if response.status_code >= 400:
             raise MarketDataProviderResponseError("行情服务请求未被接受。")
+        invalid_response = False
         try:
             payload = response.json()
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError):
+            invalid_response = True
+            payload = None
+        if invalid_response:
             raise MarketDataProviderResponseError(
                 "行情服务返回内容无法识别。"
-            ) from None
+            )
         if not isinstance(payload, dict):
             raise MarketDataProviderResponseError("行情服务返回内容无法识别。")
         return payload

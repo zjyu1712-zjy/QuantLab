@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 import requests
 
+import quantlab.data.providers.ifind_client as ifind_client
 from quantlab.data.providers.base import (
     MarketDataProviderAuthenticationError,
     MarketDataProviderRateLimitError,
@@ -44,6 +45,11 @@ class FakeTransport:
         if isinstance(response, Exception):
             raise response
         return response
+
+
+class FalseyTransport(FakeTransport):
+    def __bool__(self) -> bool:
+        return False
 
 
 def test_client_exchanges_and_reuses_access_token() -> None:
@@ -103,6 +109,7 @@ def test_client_retries_timeout_only_to_configured_limit() -> None:
     assert transport.call_count == 2
     assert "refresh-secret" not in str(captured.value)
     assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
 
 
 def test_client_retries_connection_failure_only_to_configured_limit() -> None:
@@ -182,15 +189,46 @@ def test_client_retries_server_errors_only_to_configured_limit() -> None:
 
 def test_client_translates_invalid_json_to_response_error() -> None:
     """Catches an invalid provider payload leaking a decoder exception."""
-    transport = FakeTransport([InvalidJSONResponse()])
+    class SecretBearingInvalidJSONResponse(InvalidJSONResponse):
+        def json(self) -> Any:
+            raise ValueError("raw response body: refresh-secret")
+
+    transport = FakeTransport([SecretBearingInvalidJSONResponse()])
     client = IFindQuantAPIClient(
         "refresh-secret",
         transport=transport,
         sleep=lambda _: None,
     )
 
-    with pytest.raises(MarketDataProviderResponseError, match="无法识别"):
+    with pytest.raises(MarketDataProviderResponseError, match="无法识别") as captured:
         client.post_json("/api/v1/cmd_history_quotation", {})
+
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+
+
+def test_client_uses_injected_falsey_transport_without_creating_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catches a falsey injected transport being replaced with a real session."""
+    transport = FalseyTransport(
+        [
+            FakeResponse(200, {"data": {"access_token": "access-secret"}}),
+            FakeResponse(200, {"errorcode": 0, "tables": []}),
+        ]
+    )
+
+    def unexpected_session() -> Any:
+        raise AssertionError("default session must not be created")
+
+    monkeypatch.setattr(ifind_client.requests, "Session", unexpected_session)
+    client = IFindQuantAPIClient("refresh-secret", transport=transport)
+
+    assert client.post_json("/api/v1/cmd_history_quotation", {}) == {
+        "errorcode": 0,
+        "tables": [],
+    }
+    assert len(transport.calls) == 2
 
 
 def test_data_authentication_failure_refreshes_once_before_failing() -> None:
@@ -222,11 +260,15 @@ def test_data_authentication_failure_refreshes_once_before_failing() -> None:
     [
         ("", 20.0, 2),
         ("refresh-secret", 0.0, 2),
+        ("refresh-secret", float("nan"), 2),
+        ("refresh-secret", float("inf"), 2),
         ("refresh-secret", 20.0, 0),
+        ("refresh-secret", 20.0, 1.5),
+        ("refresh-secret", 20.0, True),
     ],
 )
 def test_client_rejects_invalid_constructor_values(
-    refresh_token: str, timeout_seconds: float, max_attempts: int
+    refresh_token: str, timeout_seconds: float, max_attempts: object
 ) -> None:
     """Catches invalid configuration reaching the HTTP layer."""
     with pytest.raises(ValueError):
