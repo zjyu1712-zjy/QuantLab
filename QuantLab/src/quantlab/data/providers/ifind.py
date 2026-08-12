@@ -10,6 +10,7 @@ import pandas as pd
 from .base import (
     STANDARD_PROVIDER_COLUMNS,
     MarketDataProvider,
+    MarketDataProviderNoDataError,
     MarketDataProviderResponseError,
 )
 
@@ -93,7 +94,7 @@ class IFindETFProvider(MarketDataProvider):
         if not isinstance(tables, list):
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
         if not tables:
-            raise MarketDataProviderResponseError(_NO_DATA_MESSAGE)
+            raise MarketDataProviderNoDataError(_NO_DATA_MESSAGE)
         if len(tables) != 1 or not isinstance(tables[0], dict):
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
 
@@ -104,7 +105,7 @@ class IFindETFProvider(MarketDataProvider):
         if not isinstance(dates, list):
             raise MarketDataProviderResponseError(_INVALID_RESPONSE_MESSAGE)
         if not dates:
-            raise MarketDataProviderResponseError(_NO_DATA_MESSAGE)
+            raise MarketDataProviderNoDataError(_NO_DATA_MESSAGE)
 
         values = result_table.get("table")
         if not isinstance(values, dict):

@@ -14,7 +14,7 @@ import pandas as pd
 
 from quantlab.data.providers import (
     MarketDataProvider,
-    MarketDataProviderResponseError,
+    MarketDataProviderNoDataError,
 )
 from quantlab.data.storage import save_market_parquet
 from quantlab.data.validator import validate_market_data
@@ -113,6 +113,22 @@ class MarketDataService:
     def _metadata_paths(self) -> list[Path]:
         return list(self.raw_dir.glob("**/provider_metadata.json"))
 
+    @staticmethod
+    def _requested_coverage(
+        metadata: MarketDataMetadata,
+    ) -> tuple[date, date] | None:
+        start_text = metadata.requested_start_date
+        end_text = metadata.requested_end_date
+        if start_text is None and end_text is None:
+            return None
+        if start_text is None or end_text is None:
+            raise ValueError("缓存请求覆盖区间不完整")
+        start = date.fromisoformat(start_text)
+        end = date.fromisoformat(end_text)
+        if start > end:
+            raise ValueError("缓存请求覆盖区间无效")
+        return start, end
+
     def _find_latest_cache(
         self,
         symbol: str,
@@ -124,6 +140,7 @@ class MarketDataService:
             try:
                 payload = json.loads(metadata_path.read_text(encoding="utf-8"))
                 metadata = MarketDataMetadata(**payload)
+                self._requested_coverage(metadata)
                 if (
                     metadata.symbol == symbol
                     and metadata.provider == self.provider.key
@@ -182,16 +199,16 @@ class MarketDataService:
     ) -> list[tuple[date, date]]:
         if cached_data is None or cached_data.empty:
             return [(start_date, end_date)]
-        if (
-            cached_metadata is not None
-            and cached_metadata.requested_start_date is not None
-            and cached_metadata.requested_end_date is not None
-        ):
-            cached_start = date.fromisoformat(cached_metadata.requested_start_date)
-            cached_end = date.fromisoformat(cached_metadata.requested_end_date)
-        else:
+        requested_coverage = (
+            MarketDataService._requested_coverage(cached_metadata)
+            if cached_metadata is not None
+            else None
+        )
+        if requested_coverage is None:
             cached_start = pd.Timestamp(cached_data["date"].min()).date()
             cached_end = pd.Timestamp(cached_data["date"].max()).date()
+        else:
+            cached_start, cached_end = requested_coverage
         ranges: list[tuple[date, date]] = []
         if start_date < cached_start:
             ranges.append((start_date, min(end_date, cached_start - timedelta(days=1))))
@@ -302,6 +319,16 @@ class MarketDataService:
         cache = self._find_latest_cache(normalized_symbol, period, adjustment)
         cached_data = cache[0] if cache else None
         cached_metadata = cache[1] if cache else None
+        cached_coverage = (
+            self._requested_coverage(cached_metadata)
+            if cached_metadata is not None
+            else None
+        )
+        if cached_coverage is None and cached_data is not None and not cached_data.empty:
+            cached_coverage = (
+                pd.Timestamp(cached_data["date"].min()).date(),
+                pd.Timestamp(cached_data["date"].max()).date(),
+            )
         missing_ranges = self._missing_ranges(
             start_date,
             end_date,
@@ -338,7 +365,7 @@ class MarketDataService:
                         adjustment,
                     )
                 )
-            except MarketDataProviderResponseError:
+            except MarketDataProviderNoDataError:
                 if cached_data is None:
                     raise
                 self.logger.info(
@@ -348,35 +375,23 @@ class MarketDataService:
                     range_end,
                 )
 
-        if not fetched_parts and cached_data is not None and cached_metadata is not None:
-            requested = cached_data.loc[
-                cached_data["date"].between(
-                    pd.Timestamp(start_date), pd.Timestamp(end_date)
-                )
-            ].reset_index(drop=True)
-            if requested.empty:
-                raise MarketDataServiceError(
-                    "未找到该 ETF 的行情数据，请检查代码或日期范围。"
-                )
-            return MarketDataFetchResult(
-                data=requested,
-                metadata=cached_metadata,
-                cache_status="hit",
-                fetched_ranges=(),
-            )
-
         combined_parts = ([cached_data] if cached_data is not None else []) + fetched_parts
         combined = self._standardize_and_validate(
             pd.concat(combined_parts, ignore_index=True), normalized_symbol
         )
+        coverage_start = start_date
+        coverage_end = end_date
+        if cached_coverage is not None:
+            coverage_start = min(coverage_start, cached_coverage[0])
+            coverage_end = max(coverage_end, cached_coverage[1])
         metadata = self._save_version(
             combined,
             fetched_parts,
             normalized_symbol,
             period,
             adjustment,
-            start_date,
-            end_date,
+            coverage_start,
+            coverage_end,
         )
         requested = combined.loc[
             combined["date"].between(pd.Timestamp(start_date), pd.Timestamp(end_date))

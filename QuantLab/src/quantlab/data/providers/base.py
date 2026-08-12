@@ -31,7 +31,11 @@ class MarketDataProviderTimeout(MarketDataProviderError):
 
 
 class MarketDataProviderResponseError(MarketDataProviderError):
-    """行情提供方返回空数据或无法识别的字段。"""
+    """行情提供方返回无法识别的响应。"""
+
+
+class MarketDataProviderNoDataError(MarketDataProviderResponseError):
+    """行情提供方明确表示请求区间没有数据。"""
 
 
 class MarketDataProviderAuthenticationError(MarketDataProviderUnavailable):

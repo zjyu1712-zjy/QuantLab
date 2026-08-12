@@ -4,7 +4,10 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from quantlab.data.providers.base import MarketDataProviderResponseError
+from quantlab.data.providers.base import (
+    MarketDataProviderNoDataError,
+    MarketDataProviderResponseError,
+)
 from quantlab.data.providers.ifind import (
     IFindETFProvider,
     adjustment_to_ifind_cps,
@@ -188,7 +191,7 @@ def test_provider_rejects_malformed_response(response: dict[str, object]) -> Non
 def test_provider_translates_empty_response_to_no_data_error(response: dict[str, object]) -> None:
     provider = IFindETFProvider(FakeIFindClient(response))
 
-    with pytest.raises(MarketDataProviderResponseError, match=f"^{NO_DATA_ERROR}$"):
+    with pytest.raises(MarketDataProviderNoDataError, match=f"^{NO_DATA_ERROR}$"):
         provider.fetch_etf_history("510300", date(2025, 1, 2), date(2025, 1, 3))
 
 
