@@ -1,0 +1,3 @@
+trade_id,trade_datetime,symbol,side,quantity,price,fee
+T002,2025-01-06 14:30:00,510300,sell,100,4.080,0.50
+T001,2025-01-03 10:00:00,510300,buy,100,4.060,0.50

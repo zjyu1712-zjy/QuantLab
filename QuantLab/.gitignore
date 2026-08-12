@@ -13,5 +13,4 @@ __pycache__/
 data/raw/
 data/processed/
 
-logs/*
-!logs/.gitkeep
+logs/
