@@ -1,0 +1,8 @@
+numpy
+pandas
+pyarrow
+pytest
+requests>=2.32,<3
+streamlit
+altair
+akshare>=1.18.64,<2
