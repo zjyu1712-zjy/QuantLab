@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -50,6 +50,7 @@ class MarketDataMetadata:
     processed_path: str
     requested_start_date: str | None = None
     requested_end_date: str | None = None
+    requested_ranges: tuple[tuple[str, str], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -114,20 +115,51 @@ class MarketDataService:
         return list(self.raw_dir.glob("**/provider_metadata.json"))
 
     @staticmethod
-    def _requested_coverage(
+    def _merge_ranges(
+        ranges: list[tuple[date, date]],
+    ) -> tuple[tuple[date, date], ...]:
+        merged: list[tuple[date, date]] = []
+        for start, end in sorted(ranges):
+            if start > end:
+                raise ValueError("缓存请求覆盖区间无效")
+            if merged and start <= merged[-1][1] + timedelta(days=1):
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        return tuple(merged)
+
+    @staticmethod
+    def _requested_coverage_ranges(
         metadata: MarketDataMetadata,
-    ) -> tuple[date, date] | None:
+    ) -> tuple[tuple[date, date], ...] | None:
+        legacy_coverage: tuple[tuple[date, date], ...] | None = None
         start_text = metadata.requested_start_date
         end_text = metadata.requested_end_date
         if start_text is None and end_text is None:
-            return None
-        if start_text is None or end_text is None:
+            pass
+        elif start_text is None or end_text is None:
             raise ValueError("缓存请求覆盖区间不完整")
-        start = date.fromisoformat(start_text)
-        end = date.fromisoformat(end_text)
-        if start > end:
-            raise ValueError("缓存请求覆盖区间无效")
-        return start, end
+        else:
+            start = date.fromisoformat(start_text)
+            end = date.fromisoformat(end_text)
+            if start > end:
+                raise ValueError("缓存请求覆盖区间无效")
+            legacy_coverage = ((start, end),)
+
+        if metadata.requested_ranges is not None:
+            if not isinstance(metadata.requested_ranges, (list, tuple)):
+                raise ValueError("缓存请求覆盖区间格式无效")
+            parsed_ranges: list[tuple[date, date]] = []
+            for item in metadata.requested_ranges:
+                if not isinstance(item, (list, tuple)) or len(item) != 2:
+                    raise ValueError("缓存请求覆盖区间格式无效")
+                parsed_ranges.append(
+                    (date.fromisoformat(item[0]), date.fromisoformat(item[1]))
+                )
+            if not parsed_ranges:
+                raise ValueError("缓存请求覆盖区间不能为空")
+            return MarketDataService._merge_ranges(parsed_ranges)
+        return legacy_coverage
 
     def _find_latest_cache(
         self,
@@ -140,7 +172,15 @@ class MarketDataService:
             try:
                 payload = json.loads(metadata_path.read_text(encoding="utf-8"))
                 metadata = MarketDataMetadata(**payload)
-                self._requested_coverage(metadata)
+                requested_ranges = self._requested_coverage_ranges(metadata)
+                if metadata.requested_ranges is not None:
+                    metadata = replace(
+                        metadata,
+                        requested_ranges=tuple(
+                            (start.isoformat(), end.isoformat())
+                            for start, end in requested_ranges or ()
+                        ),
+                    )
                 if (
                     metadata.symbol == symbol
                     and metadata.provider == self.provider.key
@@ -200,21 +240,35 @@ class MarketDataService:
         if cached_data is None or cached_data.empty:
             return [(start_date, end_date)]
         requested_coverage = (
-            MarketDataService._requested_coverage(cached_metadata)
+            MarketDataService._requested_coverage_ranges(cached_metadata)
             if cached_metadata is not None
             else None
         )
         if requested_coverage is None:
-            cached_start = pd.Timestamp(cached_data["date"].min()).date()
-            cached_end = pd.Timestamp(cached_data["date"].max()).date()
-        else:
-            cached_start, cached_end = requested_coverage
+            requested_coverage = (
+                (
+                    pd.Timestamp(cached_data["date"].min()).date(),
+                    pd.Timestamp(cached_data["date"].max()).date(),
+                ),
+            )
+
         ranges: list[tuple[date, date]] = []
-        if start_date < cached_start:
-            ranges.append((start_date, min(end_date, cached_start - timedelta(days=1))))
-        if end_date > cached_end:
-            ranges.append((max(start_date, cached_end + timedelta(days=1)), end_date))
-        return [(left, right) for left, right in ranges if left <= right]
+        cursor = start_date
+        for covered_start, covered_end in requested_coverage:
+            if covered_end < cursor:
+                continue
+            if covered_start > end_date:
+                break
+            if covered_start > cursor:
+                ranges.append(
+                    (cursor, min(end_date, covered_start - timedelta(days=1)))
+                )
+            cursor = max(cursor, covered_end + timedelta(days=1))
+            if cursor > end_date:
+                break
+        if cursor <= end_date:
+            ranges.append((cursor, end_date))
+        return ranges
 
     def _fetch_range(
         self,
@@ -248,8 +302,7 @@ class MarketDataService:
         symbol: str,
         period: str,
         adjustment: str,
-        requested_start: date,
-        requested_end: date,
+        requested_ranges: tuple[tuple[date, date], ...],
     ) -> MarketDataMetadata:
         fetched_at = datetime.now(timezone.utc)
         stable_bytes = data.to_csv(index=False, date_format="%Y-%m-%d").encode("utf-8")
@@ -260,6 +313,8 @@ class MarketDataService:
         raw_version_dir = self.raw_dir / self.provider.key / version_id
         raw_version_dir.mkdir(parents=True, exist_ok=False)
         raw_snapshot = pd.concat(raw_parts, ignore_index=True) if raw_parts else data
+        requested_start = requested_ranges[0][0]
+        requested_end = requested_ranges[-1][1]
         raw_snapshot.to_csv(
             raw_version_dir / f"{symbol}_{requested_start}_{requested_end}.csv",
             index=False,
@@ -281,6 +336,10 @@ class MarketDataService:
             processed_path=str(processed_path),
             requested_start_date=requested_start.isoformat(),
             requested_end_date=requested_end.isoformat(),
+            requested_ranges=tuple(
+                (start.isoformat(), end.isoformat())
+                for start, end in requested_ranges
+            ),
         )
         (raw_version_dir / "provider_metadata.json").write_text(
             json.dumps(asdict(metadata), ensure_ascii=False, indent=2),
@@ -320,14 +379,16 @@ class MarketDataService:
         cached_data = cache[0] if cache else None
         cached_metadata = cache[1] if cache else None
         cached_coverage = (
-            self._requested_coverage(cached_metadata)
+            self._requested_coverage_ranges(cached_metadata)
             if cached_metadata is not None
             else None
         )
         if cached_coverage is None and cached_data is not None and not cached_data.empty:
             cached_coverage = (
-                pd.Timestamp(cached_data["date"].min()).date(),
-                pd.Timestamp(cached_data["date"].max()).date(),
+                (
+                    pd.Timestamp(cached_data["date"].min()).date(),
+                    pd.Timestamp(cached_data["date"].max()).date(),
+                ),
             )
         missing_ranges = self._missing_ranges(
             start_date,
@@ -379,19 +440,16 @@ class MarketDataService:
         combined = self._standardize_and_validate(
             pd.concat(combined_parts, ignore_index=True), normalized_symbol
         )
-        coverage_start = start_date
-        coverage_end = end_date
-        if cached_coverage is not None:
-            coverage_start = min(coverage_start, cached_coverage[0])
-            coverage_end = max(coverage_end, cached_coverage[1])
+        confirmed_ranges = self._merge_ranges(
+            list(cached_coverage or ()) + missing_ranges
+        )
         metadata = self._save_version(
             combined,
             fetched_parts,
             normalized_symbol,
             period,
             adjustment,
-            coverage_start,
-            coverage_end,
+            confirmed_ranges,
         )
         requested = combined.loc[
             combined["date"].between(pd.Timestamp(start_date), pd.Timestamp(end_date))

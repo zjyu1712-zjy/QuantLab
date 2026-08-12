@@ -3,7 +3,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from quantlab.data.providers import (
+    MarketDataProviderNoDataError,
+    MarketDataProviderResponseError,
+)
 from quantlab.ui.market_data import (
+    friendly_market_error,
     import_uploaded_market_history,
     import_uploaded_market_csv,
     inspect_uploaded_market_history,
@@ -35,6 +40,26 @@ def test_market_source_label_hides_unknown_provider_key() -> None:
 
 def test_market_source_label_handles_empty_cached_provider() -> None:
     assert market_source_label("", "hit") == "本地数据（其他行情服务）"
+
+
+def test_friendly_market_error_uses_no_data_error_type_not_message() -> None:
+    message, detail = friendly_market_error(
+        MarketDataProviderNoDataError("该时间段没有任何记录")
+    )
+
+    assert message == "未找到该 ETF 的行情数据，请检查代码或日期范围。"
+    assert detail == "该时间段没有任何记录"
+
+
+def test_friendly_market_error_keeps_response_error_as_service_failure() -> None:
+    message, detail = friendly_market_error(
+        MarketDataProviderResponseError("未找到必需的响应字段")
+    )
+
+    assert message == (
+        "行情服务暂时无法连接，请稍后重试，或者使用文件上传方式导入数据。"
+    )
+    assert detail == "未找到必需的响应字段"
 
 
 def test_uploaded_market_csv_runs_existing_import_pipeline(

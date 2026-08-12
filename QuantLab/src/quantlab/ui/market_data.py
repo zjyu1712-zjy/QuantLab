@@ -24,7 +24,7 @@ from quantlab.data.market_service import (
 )
 from quantlab.data.providers import (
     MarketDataProviderError,
-    MarketDataProviderResponseError,
+    MarketDataProviderNoDataError,
 )
 
 
@@ -177,7 +177,7 @@ def friendly_market_error(error: Exception) -> tuple[str, str]:
     if isinstance(error, MarketFormatError):
         return error.user_message, error.technical_detail
 
-    if isinstance(error, MarketDataProviderResponseError) and "未找到" in str(error):
+    if isinstance(error, MarketDataProviderNoDataError):
         return "未找到该 ETF 的行情数据，请检查代码或日期范围。", str(error)
     if isinstance(error, MarketDataProviderError):
         return (

@@ -234,6 +234,89 @@ def test_market_service_extension_preserves_existing_requested_coverage(
     assert len(provider.calls) == 2
 
 
+def test_market_service_preserves_disconnected_left_coverage(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        make_standard_data(
+            [f"2025-01-{day:02d}" for day in range(1, 21)]
+        )
+    )
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+
+    service.fetch_etf_history("159516", date(2025, 1, 10), date(2025, 1, 20))
+    disconnected = service.fetch_etf_history(
+        "159516", date(2025, 1, 1), date(2025, 1, 5)
+    )
+    gap = service.fetch_etf_history(
+        "159516", date(2025, 1, 6), date(2025, 1, 9)
+    )
+    covered = service.fetch_etf_history(
+        "159516", date(2025, 1, 10), date(2025, 1, 20)
+    )
+
+    assert disconnected.metadata.requested_ranges == (
+        ("2025-01-01", "2025-01-05"),
+        ("2025-01-10", "2025-01-20"),
+    )
+    assert provider.calls[2][1:3] == (date(2025, 1, 6), date(2025, 1, 9))
+    assert gap.cache_status == "extended"
+    assert gap.metadata.requested_ranges == (("2025-01-01", "2025-01-20"),)
+    assert covered.cache_status == "hit"
+    assert len(provider.calls) == 3
+
+
+def test_market_service_preserves_disconnected_right_coverage(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        make_standard_data(
+            [f"2025-01-{day:02d}" for day in range(1, 21)]
+        )
+    )
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+
+    service.fetch_etf_history("159516", date(2025, 1, 1), date(2025, 1, 5))
+    disconnected = service.fetch_etf_history(
+        "159516", date(2025, 1, 10), date(2025, 1, 20)
+    )
+    service.fetch_etf_history("159516", date(2025, 1, 6), date(2025, 1, 9))
+
+    assert disconnected.metadata.requested_ranges == (
+        ("2025-01-01", "2025-01-05"),
+        ("2025-01-10", "2025-01-20"),
+    )
+    assert provider.calls[2][1:3] == (date(2025, 1, 6), date(2025, 1, 9))
+
+
+def test_market_service_fetches_each_gap_across_multiple_covered_ranges(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(
+        make_standard_data(
+            [f"2025-01-{day:02d}" for day in range(1, 26)]
+        )
+    )
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+
+    service.fetch_etf_history("159516", date(2025, 1, 1), date(2025, 1, 5))
+    service.fetch_etf_history("159516", date(2025, 1, 10), date(2025, 1, 15))
+    service.fetch_etf_history("159516", date(2025, 1, 20), date(2025, 1, 25))
+    result = service.fetch_etf_history(
+        "159516", date(2025, 1, 3), date(2025, 1, 22)
+    )
+
+    assert [call[1:3] for call in provider.calls[-2:]] == [
+        (date(2025, 1, 6), date(2025, 1, 9)),
+        (date(2025, 1, 16), date(2025, 1, 19)),
+    ]
+    assert result.fetched_ranges == (
+        ("2025-01-06", "2025-01-09"),
+        ("2025-01-16", "2025-01-19"),
+    )
+    assert result.metadata.requested_ranges == (("2025-01-01", "2025-01-25"),)
+
+
 class ScriptedProvider(MarketDataProvider):
     name = "Scripted"
     key = "scripted"
@@ -336,6 +419,55 @@ def test_market_service_ignores_corrupted_requested_coverage(
     metadata_path = next((tmp_path / "raw").glob("**/provider_metadata.json"))
     payload = json.loads(metadata_path.read_text(encoding="utf-8"))
     payload[field] = bad_value
+    metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    replacement_provider = FakeProvider(make_standard_data())
+    replacement_service = MarketDataService(
+        replacement_provider, tmp_path / "raw", tmp_path / "processed"
+    )
+    result = replacement_service.fetch_etf_history(
+        "159516", date(2025, 1, 2), date(2025, 1, 6)
+    )
+
+    assert result.cache_status == "miss"
+    assert len(replacement_provider.calls) == 1
+
+
+def test_market_service_reads_legacy_requested_coverage_without_ranges(
+    tmp_path: Path,
+) -> None:
+    provider = FakeProvider(make_standard_data())
+    service = MarketDataService(provider, tmp_path / "raw", tmp_path / "processed")
+    service.fetch_etf_history("159516", date(2025, 1, 2), date(2025, 1, 6))
+    metadata_path = next((tmp_path / "raw").glob("**/provider_metadata.json"))
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload.pop("requested_ranges")
+    metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = service.fetch_etf_history(
+        "159516", date(2025, 1, 2), date(2025, 1, 3)
+    )
+
+    assert result.cache_status == "hit"
+    assert len(provider.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "bad_ranges",
+    [[], [["not-a-date", "2025-01-06"]], [["2025-01-06"]]],
+)
+def test_market_service_ignores_corrupted_requested_ranges(
+    tmp_path: Path,
+    bad_ranges: list[object],
+) -> None:
+    first_provider = FakeProvider(make_standard_data())
+    service = MarketDataService(
+        first_provider, tmp_path / "raw", tmp_path / "processed"
+    )
+    service.fetch_etf_history("159516", date(2025, 1, 2), date(2025, 1, 6))
+    metadata_path = next((tmp_path / "raw").glob("**/provider_metadata.json"))
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload["requested_ranges"] = bad_ranges
     metadata_path.write_text(json.dumps(payload), encoding="utf-8")
 
     replacement_provider = FakeProvider(make_standard_data())

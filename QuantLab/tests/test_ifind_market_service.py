@@ -83,6 +83,7 @@ def test_ifind_provider_flows_through_service_and_cache(tmp_path: Path) -> None:
     assert metadata.end_date == "2025-01-03"
     assert metadata.requested_start_date == "2025-01-01"
     assert metadata.requested_end_date == "2025-01-04"
+    assert metadata.requested_ranges == (("2025-01-01", "2025-01-04"),)
     assert datetime.fromisoformat(metadata.fetched_at).tzinfo is not None
     assert metadata.data_version
     assert metadata.row_count == 2
@@ -106,4 +107,5 @@ def test_ifind_provider_flows_through_service_and_cache(tmp_path: Path) -> None:
         "processed_path": metadata.processed_path,
         "requested_start_date": "2025-01-01",
         "requested_end_date": "2025-01-04",
+        "requested_ranges": [["2025-01-01", "2025-01-04"]],
     }
