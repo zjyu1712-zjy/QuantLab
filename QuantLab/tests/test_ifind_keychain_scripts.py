@@ -7,6 +7,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIGURE_SCRIPT = PROJECT_ROOT / "configure_ifind_mac.command"
+RUN_SCRIPT = PROJECT_ROOT / "run_ifind_mac.command"
 
 
 def _write_fake_security(tmp_path: Path) -> tuple[Path, Path]:
@@ -109,4 +110,118 @@ def test_configure_rejects_non_macos(tmp_path: Path) -> None:
 
     assert result.returncode != 0
     assert recorded_commands == []
+    assert "仅适用于 macOS" in result.stderr
+
+
+def _write_fake_python(tmp_path: Path) -> tuple[Path, Path]:
+    state_path = tmp_path / "python-child-state.txt"
+    fake_python = tmp_path / "python"
+    fake_python.write_text(
+        """#!/bin/bash
+set -u
+if [[ "${IFIND_REFRESH_TOKEN:-}" == "${EXPECTED_FAKE_TOKEN:-}" ]]; then
+    printf 'token_matches=true\\n' > "$FAKE_PYTHON_STATE"
+else
+    printf 'token_matches=false\\n' > "$FAKE_PYTHON_STATE"
+fi
+printf 'provider=%s\\n' "${MARKET_DATA_PROVIDER:-}" >> "$FAKE_PYTHON_STATE"
+printf 'pythonpath=%s\\n' "${PYTHONPATH:-}" >> "$FAKE_PYTHON_STATE"
+printf 'argv=' >> "$FAKE_PYTHON_STATE"
+printf '%s\\t' "$@" >> "$FAKE_PYTHON_STATE"
+printf '\\n' >> "$FAKE_PYTHON_STATE"
+""",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o700)
+    return fake_python, state_path
+
+
+def _run_launcher(
+    tmp_path: Path,
+    *,
+    fake_token: str = "fake-refresh-token",
+    keychain_exit_code: int = 0,
+    create_project_python: bool = True,
+    system_name: str = "Darwin",
+) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+    fake_security, security_log_path = _write_fake_security(tmp_path)
+    fake_python, state_path = _write_fake_python(tmp_path)
+    if not create_project_python:
+        fake_python.unlink()
+
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "EXPECTED_FAKE_TOKEN": fake_token,
+            "FAKE_PYTHON_STATE": str(state_path),
+            "FAKE_SECURITY_FIND_EXIT_CODE": str(keychain_exit_code),
+            "FAKE_SECURITY_LOG": str(security_log_path),
+            "FAKE_SECURITY_TOKEN": fake_token,
+            "QUANTLAB_PYTHON_BIN": str(fake_python),
+            "QUANTLAB_SECURITY_BIN": str(fake_security),
+            "QUANTLAB_UNAME_FOR_TESTS": system_name,
+        }
+    )
+    result = subprocess.run(
+        ["/bin/bash", str(RUN_SCRIPT)],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    state: dict[str, str] = {}
+    if state_path.exists():
+        for line in state_path.read_text(encoding="utf-8").splitlines():
+            key, value = line.split("=", maxsplit=1)
+            state[key] = value
+    return result, state
+
+
+def test_launcher_sets_ifind_child_environment_without_printing_token(
+    tmp_path: Path,
+) -> None:
+    assert RUN_SCRIPT.exists(), "启动脚本尚未实现"
+
+    result, child_state = _run_launcher(tmp_path)
+
+    assert result.returncode == 0
+    assert child_state == {
+        "token_matches": "true",
+        "provider": "ifind",
+        "pythonpath": "src",
+        "argv": "-m\tstreamlit\trun\tapp.py\t",
+    }
+    assert "fake-refresh-token" not in result.stdout
+    assert "fake-refresh-token" not in result.stderr
+
+
+def test_launcher_explains_missing_keychain_credential(tmp_path: Path) -> None:
+    assert RUN_SCRIPT.exists(), "启动脚本尚未实现"
+
+    result, child_state = _run_launcher(tmp_path, keychain_exit_code=44)
+
+    assert result.returncode != 0
+    assert child_state == {}
+    assert "configure_ifind_mac.command" in result.stderr
+
+
+def test_launcher_explains_missing_virtual_environment(tmp_path: Path) -> None:
+    assert RUN_SCRIPT.exists(), "启动脚本尚未实现"
+
+    result, child_state = _run_launcher(tmp_path, create_project_python=False)
+
+    assert result.returncode != 0
+    assert child_state == {}
+    assert ".venv" in result.stderr
+
+
+def test_launcher_rejects_non_macos(tmp_path: Path) -> None:
+    assert RUN_SCRIPT.exists(), "启动脚本尚未实现"
+
+    result, child_state = _run_launcher(tmp_path, system_name="Linux")
+
+    assert result.returncode != 0
+    assert child_state == {}
     assert "仅适用于 macOS" in result.stderr
