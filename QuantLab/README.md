@@ -67,6 +67,32 @@ iFinD refresh token 只应保存在本机或网站服务器的环境变量中，
 浏览器页面、写入源代码或提交到代码仓库。项目根目录中的 `.env.example`
 只列出配置名称，不包含真实凭证。
 
+### macOS 安全保存与启动（推荐）
+
+首次使用时，在 QuantLab 项目目录运行：
+
+```bash
+./configure_ifind_mac.command
+```
+
+macOS 钥匙串会提示输入密码。把 iFinD `refresh_token` 粘贴进去并确认；
+输入内容不会显示，QuantLab 也不会把凭证写入项目文件。以后即使关闭终端
+或重新启动电脑，也不需要再次手动执行 `export`。
+
+以后启动 QuantLab 只需运行：
+
+```bash
+./run_ifind_mac.command
+```
+
+该命令会在运行时从 macOS 钥匙串读取凭证，并只把凭证提供给本次启动的
+QuantLab 进程。如果需要更换 `refresh_token`，重新运行
+`./configure_ifind_mac.command` 即可更新同一条钥匙串记录。
+
+这两个命令只适用于 macOS。本机钥匙串方案不用于网站服务器；网站部署应
+通过服务器或云平台的 Secret Manager 注入凭证，并且必须先确认 iFinD 授权
+允许多用户间接访问、数据展示与缓存。
+
 正常本地启动：
 
 ```bash
