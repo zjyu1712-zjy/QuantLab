@@ -94,6 +94,17 @@ def test_friendly_market_error_keeps_response_error_as_service_failure() -> None
     assert detail == "未找到必需的响应字段"
 
 
+def test_friendly_market_error_explains_invalid_etf_symbol() -> None:
+    message, detail = friendly_market_error(
+        ValueError(
+            "ETF 代码应为六位数字，例如 159516、159516.SZ 或 sh510300。"
+        )
+    )
+
+    assert message == "请输入正确的 ETF 代码，例如 159516 或 510300。"
+    assert detail == "ETF 代码应为六位数字，例如 159516、159516.SZ 或 sh510300。"
+
+
 def test_uploaded_market_csv_runs_existing_import_pipeline(
     tmp_path: Path,
 ) -> None:

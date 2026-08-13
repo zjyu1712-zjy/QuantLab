@@ -202,6 +202,8 @@ def friendly_market_error(error: Exception) -> tuple[str, str]:
         return str(error), str(error)
 
     message = str(error)
+    if "ETF 代码" in message:
+        return "请输入正确的 ETF 代码，例如 159516 或 510300。", message
     if "多个" in message or "只能包含一只" in message:
         return "请每次只导入一只 ETF 的历史行情。", message
     if "日期" in message:
