@@ -470,7 +470,7 @@ adjustment_basis`；依据为 `provider` 或 `user_declared`。内容指纹对�
 `preview_sha256` 对 alignment 内容指纹、区间、共同口径及 sources 的
 非路径字段取规范指纹，不包含自身、当前时间或保存 ID。
 
-- [ ] **Step 1：写口径和版本绑定测试。**
+- [x] **Step 1：写口径和版本绑定测试。**
 
 ```python
 from datetime import date
@@ -509,13 +509,13 @@ def research_preview(imported_pair):
     return build_research_set(selected, start=date(2025, 1, 2), end=date(2025, 1, 7))
 ```
 
-- [ ] **Step 2：确认红灯。**
+- [x] **Step 2：确认红灯。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_research_sets.py -q
 ```
 
-- [ ] **Step 3：连接目录快照与纯对齐。**
+- [x] **Step 3：连接目录快照与纯对齐。**
 
 先验证选择唯一性和声明值，再逐只使用 `read_market_version`。已知
 口径不允许不同的人工声明；未知口径必须显式提供。统一口径后调用
@@ -536,7 +536,7 @@ if adjustment not in {"none", "qfq", "hfq"}:
 内容与既有指纹比对，不能以重新赋值指纹来“修复”被修改对象。无区间
 观测的资产从 sources 提供身份，统计允许它有 100% 缺失。
 
-- [ ] **Step 4：验证并提交。**
+- [x] **Step 4：验证并提交。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_research_sets.py tests/test_market_catalog.py tests/test_alignment.py -q

@@ -197,6 +197,26 @@ def alignment_content_sha256(data: pd.DataFrame, axis: CalendarAxis) -> str:
     return sha256(payload.encode("utf-8")).hexdigest()
 
 
+def alignment_warnings(
+    coverage: pd.DataFrame, axis: CalendarAxis, common_dates: tuple[date, ...],
+) -> tuple[str, ...]:
+    """从已校验的摘要生成限制提示，供对齐与预览复核共用，避免两套规则。"""
+    warnings = [
+        "基于行情日期并集，未经完整交易日历核验，无法发现所有 ETF 同时缺数据的日期；缺失比例仅相对于当前日期轴。"
+        if axis.mode == "observed_union" else "日历由用户提供，覆盖范围为用户声明，不代表已经通过官方认证。"
+    ]
+    for row in coverage.itertuples(index=False):
+        if row.observation_count == 0:
+            warnings.append(f"ETF {row.symbol} 在研究区间内无行情，保留全缺失记录，不推断上市或停牌状态。")
+        elif row.missing_count:
+            warnings.append(f"ETF {row.symbol} 相对于当前日期轴缺失 {row.missing_count} 条记录，未填充行情。")
+        if row.zero_volume_count:
+            warnings.append(f"ETF {row.symbol} 有 {row.zero_volume_count} 条零成交量观测；有记录不代表可交易。")
+    if not common_dates:
+        warnings.append("没有所有 ETF 同时有行情的共同日期，不能进行全体 ETF 的同日比较。")
+    return tuple(warnings)
+
+
 def align_market_data(
     datasets: Mapping[str, pd.DataFrame], *, start: date, end: date,
     calendar: CalendarInput | None = None,
@@ -221,20 +241,8 @@ def align_market_data(
     aligned = aligned.reset_index().loc[:, list(ALIGNED_COLUMNS)]
     validate_aligned_data(aligned, axis, symbols)
     coverage, common_dates = summarize_alignment(aligned)
-    warnings = [
-        "基于行情日期并集，未经完整交易日历核验，无法发现所有 ETF 同时缺数据的日期；缺失比例仅相对于当前日期轴。"
-        if axis.mode == "observed_union" else "日历由用户提供，覆盖范围为用户声明，不代表已经通过官方认证。"
-    ]
-    for row in coverage.itertuples(index=False):
-        if row.observation_count == 0:
-            warnings.append(f"ETF {row.symbol} 在研究区间内无行情，保留全缺失记录，不推断上市或停牌状态。")
-        elif row.missing_count:
-            warnings.append(f"ETF {row.symbol} 相对于当前日期轴缺失 {row.missing_count} 条记录，未填充行情。")
-        if row.zero_volume_count:
-            warnings.append(f"ETF {row.symbol} 有 {row.zero_volume_count} 条零成交量观测；有记录不代表可交易。")
-    if not common_dates:
-        warnings.append("没有所有 ETF 同时有行情的共同日期，不能进行全体 ETF 的同日比较。")
     return AlignmentResult(
         data=aligned, coverage=coverage, calendar=axis, common_dates=common_dates,
-        warnings=tuple(warnings), content_sha256=alignment_content_sha256(aligned, axis),
+        warnings=alignment_warnings(coverage, axis, common_dates),
+        content_sha256=alignment_content_sha256(aligned, axis),
     )
