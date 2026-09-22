@@ -362,7 +362,7 @@ observation_count, missing_count, missing_ratio, longest_missing_run,
 zero_volume_count`，无观测时首末日期为空。版本和来源在 Task 4 加入展示
 报告，不令纯计算模块依赖目录类型。
 
-- [ ] **Step 1：写可手算的对齐测试。**
+- [x] **Step 1：写可手算的对齐测试。**
 
 ```python
 from datetime import date
@@ -391,13 +391,13 @@ def test_alignment_keeps_gaps_and_original_values(sample_assets):
 的一只仍保留、全部无行情拒绝、没有共同日期警告、连续缺失按日期轴
 计数、显式日历增加全体缺失日。
 
-- [ ] **Step 2：运行红灯测试。**
+- [x] **Step 2：运行红灯测试。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_alignment.py -q
 ```
 
-- [ ] **Step 3：实现规范化、重建索引、统计与验证。**
+- [x] **Step 3：实现规范化、重建索引、统计与验证。**
 
 先对每个非空完整输入深拷贝、转换日期和五个数值列、校验有限数值与
 旧 `validate_market_data` 的价格逻辑，再按 `(date,symbol)` 查重。之后
@@ -421,7 +421,7 @@ aligned = aligned.reset_index()
 得到共同日期。规范 JSON 将日期转 ISO、缺失转 `null`、浮点保留精度，
 `allow_nan=False`，连同日历轴声明计算内容指纹；不导入回测模块的工具。
 
-- [ ] **Step 4：绿灯验证并提交。**
+- [x] **Step 4：绿灯验证并提交。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_calendar.py tests/test_alignment.py tests/test_validator.py -q
