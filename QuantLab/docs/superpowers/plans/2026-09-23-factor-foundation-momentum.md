@@ -135,7 +135,7 @@ class BaseFactor(ABC):
         raise NotImplementedError
 ```
 
-- [ ] **Step 1：先写接口和注册红灯测试。** 测试文件先引入尚不存在的类型；
+- [x] **Step 1：先写接口和注册红灯测试。** 测试文件先引入尚不存在的类型；
   以下合成因子仅作接口测试，绝不加入产品默认表。
 
 ```python
@@ -212,7 +212,7 @@ def test_definition_rejects_invalid_metadata(field, value):
         replace(DEFINITION, **{field: value})
 ```
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_contracts.py -q
@@ -220,7 +220,7 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_contracts.py -q
 
 预期首次失败于尚未导出的 `FactorDefinition`，而不是路径或依赖错误。
 
-- [ ] **Step 3：实现类型与注册校验。** 在上述定义中添加 `__post_init__`：
+- [x] **Step 3：实现类型与注册校验。** 在上述定义中添加 `__post_init__`：
   七个文本字段为非空、无两端空白的字符串；`required_fields` 为非空、
   唯一、无空白项的字符串元组；两个周期字段必须 `type(value) is int`，
   lookback 大于 0；当前 `strict_window` 要求 `window_observations == lookback_periods + 1`。
@@ -270,7 +270,7 @@ def test_registry_invalid_lookup_name_has_clear_error(name):
         FactorRegistry().get(name)
 ```
 
-- [ ] **Step 4：绿灯与任务边界复核。**
+- [x] **Step 4：绿灯与任务边界复核。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_contracts.py -q
@@ -279,7 +279,7 @@ git diff --check
 
 预期全部接口测试通过。检查只改因子接口和新测试，没有引入具体数据/回测依赖。
 
-- [ ] **Step 5：提交这一小步并解释。**
+- [x] **Step 5：提交这一小步并解释。**
 
 ```bash
 git add -- src/quantlab/factors/base.py src/quantlab/factors/registry.py src/quantlab/factors/__init__.py tests/test_factor_contracts.py
@@ -1046,7 +1046,15 @@ git commit -m "feat: run traceable factors on validated research snapshots"
 | 快照不变、来源移走仍可重读后计算 | Task 3 真实保存重读及字节比对 |
 | 无新依赖/界面/排名/交易，原功能保持 | Task 3 完整回归、依赖和引用检查 |
 
-当前只完成计划编写与文档自检，上述任务复选框全部保持未勾选。
-实施前须由用户审阅计划并确认执行方式。建议当前会话内逐项实现，最后
-由独立审查者检查整体；原因是三项任务前后依赖紧密、改动规模有限，且
-用户需要逐步理解。也可选择每项任务由不同实现者完成并逐项独立审查。
+## 执行记录（2026-09-23）
+
+用户已审阅计划并选择推荐方式：当前会话内逐项实现，最后统一独立审查。
+本轮按用户逐步学习要求仅交付 Task 1；Task 2、3 尚未开始，没有动量
+公式、研究运行入口或因子界面。整份计划的最终独立审查尚未进行。
+
+- Task 1：统一说明、数值/状态接口和显式注册已完成；现有 `compute` 调用形式保留。
+- 红灯：新增测试因 `FactorDefinition` 尚不存在而失败，与计划预期一致。
+- 专项验证：84 项通过；全项目回归：706 项通过、2 项可选外部接口测试跳过。
+- 对照基线：622 项通过、相同的 2 项跳过；依赖一致性检查通过。
+- 仅提交因子基础代码、新测试及本计划进度，未修改第一阶段/iFinD 的既有脏改动。
+- 继续使用原目录与虚拟环境；不重新安装依赖、不新建工作树、不推送或部署。
