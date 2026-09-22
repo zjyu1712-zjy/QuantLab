@@ -262,7 +262,7 @@ def resolve_calendar(observed_dates: tuple[date, ...], *, start: date, end: date
 按其键检查。`CalendarInput` 可程序化构造，但 `resolve_calendar` 必须重新
 验证其字段、排序唯一性和指纹，不能假设 dataclass 自带验证。
 
-- [ ] **Step 1：写并集、显式日历和冲突测试。**
+- [x] **Step 1：写并集、显式日历和冲突测试。**
 
 ```python
 from datetime import date
@@ -297,13 +297,13 @@ def test_calendar_rejects_ambiguous_or_incomplete_rows(content):
 拒绝、假日端点不要求有日期行、行情日期不在日历时冲突报错、并集排序
 且不添加工作日、字节顺序不同的日历有相同规范日期指纹等测试。
 
-- [ ] **Step 2：验证测试先失败。**
+- [x] **Step 2：验证测试先失败。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_calendar.py -q
 ```
 
-- [ ] **Step 3：实现纯内存校验。**
+- [x] **Step 3：实现纯内存校验。**
 
 CSV 用 `utf-8-sig` 解码且只接受 `date` 列；校验再排序，不删除重复。
 指纹采用排序后 ISO 日期列表的规范 JSON。`resolve_calendar` 在研究区间
@@ -319,7 +319,7 @@ if conflicts:
 显式日历输入为空或区间内无日历日期时停止。无论日期轴模式如何，Task 3
 负责拒绝所有资产在研究区间内都无行情的请求。
 
-- [ ] **Step 4：验证后提交。**
+- [x] **Step 4：验证后提交。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_calendar.py -q
