@@ -361,6 +361,27 @@ def test_loaded_objects_are_independent_of_later_loads(api, tmp_path, research_p
     assert second.preview.sources[0]["provider"] == "csv"
 
 
+def test_changed_calendar_file_identity_is_rejected_on_load_and_listing(api, tmp_path, imported_pair):
+    raw, processed, _ = imported_pair
+    selected = tuple(DatasetSelection(r, "none") for r in scan_market_catalog(processed, raw).records)
+    start, end = date(2025, 1, 2), date(2025, 1, 7)
+    calendar = parse_calendar_csv(
+        b"date\n2025-01-02\n2025-01-03\n2025-01-06\n2025-01-07\n",
+        source="合成日历", coverage_start=start, coverage_end=end,
+    )
+    original = build_research_set(selected, start=start, end=end, calendar=calendar)
+    root = tmp_path / "sets"
+    saved = api.save_research_set(original, root, name="日历追溯校验")
+    content = manifest(saved)
+    content["calendar"]["file_sha256"] = "0" * 64
+    write_manifest(saved, content)
+    with pytest.raises(ValueError, match="预览指纹"):
+        api.load_research_set(root, saved.set_id)
+    scan = api.list_research_sets(root)
+    assert not scan.records
+    assert len(scan.issues) == 1
+
+
 @pytest.mark.parametrize("mode", ["union", "supplied", "all_missing_asset"])
 def test_roundtrip_preserves_calendar_empty_dates_and_fraction_precision(api, tmp_path, imported_pair, mode):
     raw, processed, _ = imported_pair

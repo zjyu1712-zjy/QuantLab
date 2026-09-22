@@ -254,6 +254,32 @@ def test_supplied_calendar_keeps_all_missing_day_and_declared_coverage(api, reco
     api.validate_research_preview(result)
 
 
+def test_calendar_file_identity_change_invalidates_existing_preview(api, records):
+    calendar = parse_calendar_csv(
+        b"date\n2025-01-02\n2025-01-03\n2025-01-06\n2025-01-07\n",
+        source="合成日历", coverage_start=START, coverage_end=END,
+    )
+    original = preview(api, records, calendar=calendar)
+    changed_axis = replace(original.alignment.calendar, file_sha256="0" * 64)
+    changed = replace(original, alignment=replace(original.alignment, calendar=changed_axis))
+    with pytest.raises(ValueError, match="预览指纹"):
+        api.validate_research_preview(changed)
+    assert changed.preview_sha256 == original.preview_sha256
+
+
+def test_equivalent_calendar_bytes_keep_alignment_but_change_provenance_identity(api, records):
+    plain = b"date\n2025-01-02\n2025-01-03\n2025-01-06\n2025-01-07\n"
+    calendars = [parse_calendar_csv(
+        content, source="合成日历", coverage_start=START, coverage_end=END,
+    ) for content in (plain, plain.replace(b"\n", b"\r\n"))]
+    first, second = [preview(api, records, calendar=calendar) for calendar in calendars]
+    assert first.alignment.content_sha256 == second.alignment.content_sha256
+    pd.testing.assert_frame_equal(first.alignment.data, second.alignment.data)
+    assert first.preview_sha256 != second.preview_sha256
+    api.validate_research_preview(first)
+    api.validate_research_preview(second)
+
+
 @pytest.mark.parametrize("target", [
     "price", "missing_fill", "core_coverage", "enriched_coverage", "common_dates",
     "alignment_hash", "preview_hash", "source_version", "source_input_hash", "source_provider",

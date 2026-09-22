@@ -185,7 +185,8 @@ def research_preview_sha256(preview: ResearchSetPreview) -> str:
     """重验内容并计算预览指纹，不改动对象；源文件字节/完整历史指纹仅作保留声明。
 
     本函数不会重新打开原始文件，无法独立证明其历史真实性。路径、保存 ID、
-    保存时间不参与指纹；文件路径变化不改变研究数据内容身份。
+    保存时间不参与指纹；文件路径变化不改变研究数据内容身份。日历原文件
+    指纹在此绑定，保持对齐层的语义指纹不受 CSV 排版差异影响。
     """
     if not isinstance(preview, ResearchSetPreview) or not isinstance(preview.alignment, AlignmentResult):
         raise ValueError("研究预览对象无效")
@@ -214,6 +215,7 @@ def research_preview_sha256(preview: ResearchSetPreview) -> str:
         raise ValueError("限制提示与当前数据及声明不一致")
     return _digest({
         "alignment_content_sha256": actual_hash,
+        "calendar_file_sha256": axis.file_sha256,
         "start": preview.start.isoformat(), "end": preview.end.isoformat(), "adjustment": preview.adjustment,
         "sources": [{key: source[key] for key in SOURCE_FIELDS if key != "processed_path"}
                     for source in preview.sources],
