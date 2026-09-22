@@ -42,3 +42,12 @@ class FactorRegistry:
     def names(self) -> tuple[str, ...]:
         """返回全部已注册因子名称。"""
         return tuple(sorted(self._factor_types))
+
+
+def create_default_registry() -> FactorRegistry:
+    """显式新建只含 momentum_20 的注册表，不运行计算或共享注册状态。"""
+    from quantlab.factors.momentum import Momentum20Factor
+
+    registry = FactorRegistry()
+    registry.register(Momentum20Factor)
+    return registry

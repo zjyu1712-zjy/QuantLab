@@ -309,7 +309,7 @@ git commit -m "feat: define factor contracts and explicit registry"
 - 私有 `_validate_input(market_data: pd.DataFrame) -> None` 不解析或修补输入，不修改调用方。
 - `values` 名称固定为 `momentum_20`、dtype 为 `float64`；`status` 名称为 `status`，使用 pandas `string` dtype。
 
-- [ ] **Step 1：写公式、窗口和类型测试。** 以下代码同属新测试文件；
+- [x] **Step 1：写公式、窗口和类型测试。** 以下代码同属新测试文件；
   使用合成工作日仅为了有自然日间隔，不把它称为官方交易日历。
 
 ```python
@@ -445,7 +445,7 @@ def test_non_dataframe_rejected_and_nullable_bools_without_na_allowed():
     pd.testing.assert_series_equal(Momentum20Factor().compute(frame), expected)
 ```
 
-- [ ] **Step 2：确认红灯由缺少因子实现引起。**
+- [x] **Step 2：确认红灯由缺少因子实现引起。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_momentum_factor.py -q
@@ -453,7 +453,7 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_momentum_factor.py -q
 
 首次预期 `Momentum20Factor` 导入失败；Task 1 测试此时仍须通过。
 
-- [ ] **Step 3：实现输入验证、公式和显式默认注册。** 输入顺序不能重排。
+- [x] **Step 3：实现输入验证、公式和显式默认注册。** 输入顺序不能重排。
   先检查非空 DataFrame、唯一列名、四个必需列、唯一行索引；再检查单一
   六位字符串代码、日期、数值和观测标记。日期只验证，不调用字符串解析。
   关键验证分支如下，其余检查用上一句对应条件逐项抛中文 `ValueError`：
@@ -521,7 +521,7 @@ def create_default_registry() -> FactorRegistry:
     return registry
 ```
 
-- [ ] **Step 4：合并测试绿灯。**
+- [x] **Step 4：合并测试绿灯。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_contracts.py tests/test_momentum_factor.py -q
@@ -531,7 +531,7 @@ git diff --check
 核对前 20 个位置为空，第 21 个位置是 10%，间隔跨周末不改变周期计数；
 不增加把结果整体滞后一日的代码，因为当前输出是收盘后可用的描述值。
 
-- [ ] **Step 5：提交并解释公式。**
+- [x] **Step 5：提交并解释公式。**
 
 ```bash
 git add -- src/quantlab/factors/momentum.py src/quantlab/factors/registry.py src/quantlab/factors/__init__.py tests/test_momentum_factor.py
@@ -1049,12 +1049,18 @@ git commit -m "feat: run traceable factors on validated research snapshots"
 ## 执行记录（2026-09-23）
 
 用户已审阅计划并选择推荐方式：当前会话内逐项实现，最后统一独立审查。
-本轮按用户逐步学习要求仅交付 Task 1；Task 2、3 尚未开始，没有动量
-公式、研究运行入口或因子界面。整份计划的最终独立审查尚未进行。
+已按用户逐步学习要求先后交付 Task 1、Task 2；Task 3 尚未开始，已有
+单 ETF 动量计算，但尚未连接研究快照、追溯输出或因子界面。整份计划的
+最终独立审查尚未进行。
 
 - Task 1：统一说明、数值/状态接口和显式注册已完成；现有 `compute` 调用形式保留。
-- 红灯：新增测试因 `FactorDefinition` 尚不存在而失败，与计划预期一致。
-- 专项验证：84 项通过；全项目回归：706 项通过、2 项可选外部接口测试跳过。
-- 对照基线：622 项通过、相同的 2 项跳过；依赖一致性检查通过。
+- Task 1 红灯：新增测试因 `FactorDefinition` 尚不存在而失败，与计划预期一致。
+- Task 1 验证：84 项通过；全项目回归：706 项通过、2 项可选外部接口测试跳过。
+- Task 1 对照基线：622 项通过、相同的 2 项跳过；依赖一致性检查通过。
+- Task 2：实现 `Momentum20Factor` 和独立默认注册表；严格 21 条窗口、四种逐行状态、索引保留和输入不修改。
+- Task 2 红灯：新增测试因 `Momentum20Factor` 尚不存在而失败；同时原有 84 项因子接口测试通过。
+- Task 2 验证：新增 45 项测试通过，因子专项共 129 项通过；全项目 751 项通过、2 项外部接口测试跳过；依赖一致性检查通过。
+- Task 2 对照基线：706 项通过、相同的 2 项跳过；没有运行外部数据服务或读取私人行情。
+- Task 2 手算：20 期前 100、当前 110 且窗口完整时为 10%；前 20 个位置留空，窗口中间缺失亦留空。
 - 仅提交因子基础代码、新测试及本计划进度，未修改第一阶段/iFinD 的既有脏改动。
 - 继续使用原目录与虚拟环境；不重新安装依赖、不新建工作树、不推送或部署。
