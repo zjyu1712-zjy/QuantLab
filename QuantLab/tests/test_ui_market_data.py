@@ -210,3 +210,14 @@ def test_friendly_market_import_preserves_original_and_normalizes(
         "close",
         "volume",
     ]
+
+
+def test_market_catalog_page_keeps_healthy_version_when_another_is_corrupt(imported_pair, caplog):
+    raw, processed, imports = imported_pair
+    bad_version_dir = Path(imports[0].version.archived_path).parent
+    (bad_version_dir / "import_result.json").write_text("{unfinished", encoding="utf-8")
+    records = list_market_datasets(processed, raw)
+    assert len(records) == 1
+    assert records[0].version_id == imports[1].version.version_id
+    assert isinstance(records[0].processed_path, str)
+    assert imports[0].version.version_id in caplog.text

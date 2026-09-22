@@ -117,7 +117,7 @@ def read_market_version(record: MarketVersionRecord) -> tuple[pd.DataFrame, str]
 联网数据使用已有 key；文件导入使用 `source_format.json` 的来源 key，
 没有该文件时使用 `csv`。CSV 的 `adjustment=None`，不能默认成不复权。
 
-- [ ] **Step 1：建立合成数据与真实导入夹具，并写目录测试。**
+- [x] **Step 1：建立合成数据与真实导入夹具，并写目录测试。**
 
 `tests/conftest.py` 使用如下完整夹具，不写入项目私人数据目录：
 
@@ -174,7 +174,7 @@ def test_catalog_keeps_each_selected_version(imported_pair):
 坏版本不可选且 `issues` 可定位；健康版本仍可选。元数据在扫描后改变时，
 `read_market_version` 必须抛出 `ValueError`，不得套用旧价格口径。
 
-- [ ] **Step 2：运行红灯测试。**
+- [x] **Step 2：运行红灯测试。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_market_catalog.py -q
@@ -182,7 +182,7 @@ def test_catalog_keeps_each_selected_version(imported_pair):
 
 预期新模块尚未实现，导入或具体行为断言失败；确认不是夹具错误。
 
-- [ ] **Step 3：实现目录和单次快照读取，再接回旧页面。**
+- [x] **Step 3：实现目录和单次快照读取，再接回旧页面。**
 
 使用现有 `import_result.json` 为完成标记，建立版本到元数据路径的索引；
 核对代码目录名、文件 stem、版本号、路径、行数及有时区的导入时间。
@@ -203,7 +203,7 @@ file_sha256 = sha256(payload).hexdigest()
 版本排序。旧包装仍返回原有 `MarketDatasetRecord`，字段与类型不变；
 新页面直接用 `CatalogScan.issues`，旧包装将问题记到现有日志且继续返回健康记录。
 
-- [ ] **Step 4：验证新增目录与旧数据功能。**
+- [x] **Step 4：验证新增目录与旧数据功能。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_market_catalog.py tests/test_ui_market_data.py tests/test_market_service.py tests/test_ifind_market_service.py -q
@@ -211,7 +211,7 @@ file_sha256 = sha256(payload).hexdigest()
 
 预期全部离线测试通过。不得为兼容新目录而取消既有版本完整性测试。
 
-- [ ] **Step 5：只审阅并提交该任务的差异。**
+- [x] **Step 5：只审阅并提交该任务的差异。**
 
 ```bash
 git diff -- src/quantlab/data/catalog.py src/quantlab/ui/market_data.py tests/conftest.py tests/test_market_catalog.py tests/test_ui_market_data.py

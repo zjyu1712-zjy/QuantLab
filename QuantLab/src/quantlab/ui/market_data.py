@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pandas as pd
 import streamlit as st
 
+from quantlab.data.catalog import scan_market_catalog
 from quantlab.data.importer import (
     MarketImportResult,
     import_market_csv,
@@ -220,69 +221,20 @@ def list_market_datasets(
     processed_dir: str | Path,
     raw_archive_dir: str | Path,
 ) -> list[MarketDatasetRecord]:
-    """列出已经标准化保存的行情版本，最新版本排在最前。"""
-    processed_root = Path(processed_dir)
-    raw_root = Path(raw_archive_dir)
-    records: list[MarketDatasetRecord] = []
-
-    for parquet_path in processed_root.glob("*/*.parquet"):
-        version_id = parquet_path.stem
-        result_paths = list(raw_root.glob(f"**/{version_id}/import_result.json"))
-        metadata_paths = list(raw_root.glob(f"**/{version_id}/metadata.json"))
-        provider_metadata_paths = list(
-            raw_root.glob(f"**/{version_id}/provider_metadata.json")
+    """保留第一阶段页面接口，目录发现和校验统一交给数据层。"""
+    scan = scan_market_catalog(Path(processed_dir), Path(raw_archive_dir))
+    for issue in scan.issues:
+        logging.getLogger("quantlab.market_data").warning("%s", issue)
+    return [
+        MarketDatasetRecord(
+            symbol=record.symbol,
+            version_id=record.version_id,
+            row_count=record.row_count,
+            imported_at=record.imported_at,
+            processed_path=str(record.processed_path),
         )
-        result_path = result_paths[0] if result_paths else Path()
-        metadata_path = metadata_paths[0] if metadata_paths else Path()
-        provider_metadata_path = (
-            provider_metadata_paths[0] if provider_metadata_paths else Path()
-        )
-        row_count: int | None = None
-
-        # import_result.json 是数据版本已完整发布的提交标记。
-        # 写入中断的 Parquet/元数据不应出现在用户数据目录。
-        if not result_path.is_file():
-            continue
-
-        imported_at = datetime.fromtimestamp(
-            parquet_path.stat().st_mtime,
-            tz=timezone.utc,
-        ).isoformat()
-
-        if result_path.is_file():
-            result_data = json.loads(
-                result_path.read_text(encoding="utf-8")
-            )
-            row_count = int(result_data["row_count"])
-
-        if metadata_path.is_file():
-            metadata = json.loads(
-                metadata_path.read_text(encoding="utf-8")
-            )
-            imported_at = str(metadata["imported_at"])
-
-        if provider_metadata_path.is_file():
-            provider_metadata = json.loads(
-                provider_metadata_path.read_text(encoding="utf-8")
-            )
-            row_count = int(provider_metadata["row_count"])
-            imported_at = str(provider_metadata["fetched_at"])
-
-        records.append(
-            MarketDatasetRecord(
-                symbol=parquet_path.parent.name,
-                version_id=version_id,
-                row_count=row_count,
-                imported_at=imported_at,
-                processed_path=str(parquet_path),
-            )
-        )
-
-    return sorted(
-        records,
-        key=lambda record: record.imported_at,
-        reverse=True,
-    )
+        for record in scan.records
+    ]
 
 
 def load_market_dataset(
