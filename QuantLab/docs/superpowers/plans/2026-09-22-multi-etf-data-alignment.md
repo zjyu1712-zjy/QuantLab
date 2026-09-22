@@ -682,7 +682,7 @@ def friendly_research_error(error: Exception) -> tuple[str, str]: ...
 数据服务直接从各自模块导入，避免为了新页面扩大旧 `ui/__init__.py` 的
 依赖。状态键使用 `research_` 前缀，与第一阶段页面隔离。
 
-- [ ] **Step 1：先写请求变化和页面正常流程测试。**
+- [x] **Step 1：先写请求变化和页面正常流程测试。**
 
 ```python
 from datetime import date
@@ -731,7 +731,7 @@ assert page.success
 AppTest 暂无上传接口时只替代 `st.file_uploader` 返回合成 BytesIO，
 不能 mock 日历解析或对齐结果。
 
-- [ ] **Step 2：确认红灯，再实现页面服务和目录隔离。**
+- [x] **Step 2：确认红灯，再实现页面服务和目录隔离。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_ui_multi_asset.py -q
@@ -760,7 +760,7 @@ return raw_dir.parent.parent / "research_sets"
 已有导入页面；没有共同日期等警告不伪装为失败。写入失败不显示成功，
 预览继续保留。
 
-- [ ] **Step 3：完成导航、显式日历、保存列表和失败路径。**
+- [x] **Step 3：完成导航、显式日历、保存列表和失败路径。**
 
 在 `app.py` 的“我的投资”中添加 `st.Page`，名称“多 ETF 数据”。
 页面顶部说明研究集合不等于可交易股票池。日历模式用单选，上传模式
@@ -771,7 +771,7 @@ return raw_dir.parent.parent / "research_sets"
 测试覆盖两个日历模式、保存失败、损坏集合、目录空、共同日期空、
 同次预览重复保存生成不同 ID、来源声明警告以及隐私隔离。
 
-- [ ] **Step 4：完成真实链路测试与使用说明。**
+- [x] **Step 4：完成真实链路测试与使用说明。**
 
 `tests/test_stage2_data_acceptance.py` 不通过页面 mock 核心流程：用
 `imported_pair` → 目录 → 明确口径 → 显式日历增加一个全体缺失日 →
@@ -783,7 +783,7 @@ return raw_dir.parent.parent / "research_sets"
 停牌、历史股票池限制、本地与临时保存差异。README 添加入口；路线图
 仅将“多 ETF 数据管理和交易日对齐”标为完成，因子与组合仍未实施。
 
-- [ ] **Step 5：运行完整验证并手动检查页面。**
+- [x] **Step 5：运行完整验证并手动检查页面。**
 
 ```bash
 .venv/bin/python -m pytest -q -rs

@@ -88,6 +88,11 @@ navigation = st.navigation(
                 title="添加资产数据",
                 icon=":material/add_chart:",
             ),
+            st.Page(
+                PROJECT_ROOT / "pages" / "6_多ETF数据.py",
+                title="多 ETF 数据",
+                icon=":material/table_chart:",
+            ),
         ],
         "分析": [
             st.Page(

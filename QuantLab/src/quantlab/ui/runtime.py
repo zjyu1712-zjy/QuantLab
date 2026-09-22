@@ -74,3 +74,9 @@ def get_market_storage_dirs(project_root: str | Path) -> tuple[Path, Path]:
         session_root / "raw" / "market",
         session_root / "processed" / "market",
     )
+
+
+def get_research_storage_dir(project_root: str | Path) -> Path:
+    """研究集合复用行情的本地/独立会话根，不新建共享临时目录。"""
+    raw_dir, _ = get_market_storage_dirs(project_root)
+    return raw_dir.parent.parent / "research_sets"
