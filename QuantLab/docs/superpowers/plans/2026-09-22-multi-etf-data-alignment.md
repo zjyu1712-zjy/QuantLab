@@ -578,7 +578,7 @@ def list_research_sets(output_dir: Path) -> ResearchSetScan: ...
 def load_research_set(output_dir: Path, set_id: str) -> LoadedResearchSet: ...
 ```
 
-- [ ] **Step 1：写保存、重读与损坏测试。**
+- [x] **Step 1：写保存、重读与损坏测试。**
 
 ```python
 from pathlib import Path
@@ -610,13 +610,13 @@ UUID 碰撞不覆盖（替换 storage 模块的 uuid4）、写 Parquet 或 manif
 用假凭证环境值验证产物不含该值。修改文件并同步修改其文件哈希时，
 仍需通过内容指纹、覆盖重算、输入快照语义校验，不能只验证字节哈希。
 
-- [ ] **Step 2：运行红灯测试。**
+- [x] **Step 2：运行红灯测试。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_research_storage.py -q
 ```
 
-- [ ] **Step 3：实现只追加的快照保存。**
+- [x] **Step 3：实现只追加的快照保存。**
 
 保存之前校验预览；名称去首尾空白但不作为目录名。生成 UUID，独占
 创建目录，写 `aligned.parquet` 与 `coverage.csv`，覆盖表 CSV 读写明确
@@ -643,7 +643,7 @@ JSON 使用 `allow_nan=False`，NaT/NaN 在元数据中转换为 `null`。仅发
 sources 中的原路径，也不因读取而重新选择行情版本。列表对半成品
 忽略，对损坏完成标记记录 issue，排序按 UTC 创建时间倒序。
 
-- [ ] **Step 4：测试、检查忽略规则并提交。**
+- [x] **Step 4：测试、检查忽略规则并提交。**
 
 ```bash
 .venv/bin/python -m pytest tests/test_research_storage.py tests/test_research_sets.py -q
