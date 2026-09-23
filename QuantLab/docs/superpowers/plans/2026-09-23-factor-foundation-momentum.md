@@ -585,7 +585,7 @@ class FactorRunResult:
     warnings: tuple[str, ...]
 ```
 
-- [ ] **Step 1：建立仅本测试文件使用的真实导入夹具及核心红灯测试。**
+- [x] **Step 1：建立仅本测试文件使用的真实导入夹具及核心红灯测试。**
   不改共享 `conftest.py`。每次在 `tmp_path` 的独立子目录创建合成版本；
   该测试工厂允许造缺失、日期轴差异及后续价格变化，不 mock 数据层。
 
@@ -766,7 +766,7 @@ def test_invalid_entry_arguments(research_preview):
         run_research_factor(research_preview, registry={})
 ```
 
-- [ ] **Step 2：先运行新增文件确认红灯。**
+- [x] **Step 2：先运行新增文件确认红灯。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_research.py -q
@@ -775,7 +775,7 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_research.py -q
 预期尚未导出的 `run_research_factor` 导致失败。再写入下一步的坏因子及
 保存链路测试；不要先实现服务再补上所有测试。
 
-- [ ] **Step 3：补上不合约结果、计算输入隔离及保存重读测试。** 以下继续
+- [x] **Step 3：补上不合约结果、计算输入隔离及保存重读测试。** 以下继续
   追加到同一测试文件，使用上文已定义的 `make_preview` 和 imports。
 
 ```python
@@ -873,7 +873,7 @@ def test_saved_snapshot_calculates_without_original_files(make_preview, tmp_path
   “相同”来强行过测试；实际使用真实导入、保存和载入，只有输入/输出契约
   测试使用故意损坏的因子替身。
 
-- [ ] **Step 4：实现纯内存研究编排与输出校验。** 入口先检查参数类型，
+- [x] **Step 4：实现纯内存研究编排与输出校验。** 入口先检查参数类型，
   `deepcopy(preview)` 后调用现有校验；严禁调用 `research_preview_sha256`
   重算并覆盖旧指纹以修复输入。运行步骤的核心代码：
 
@@ -974,7 +974,7 @@ def _factor_warnings(preview: ResearchSetPreview, has_valid: bool) -> tuple[str,
   公共导出增加 `FactorRunResult`、`run_research_factor`。禁止调用行情
   Provider、读取环境变量、自动保存因子表或改动 `aligned.parquet`。
 
-- [ ] **Step 5：运行专项测试，失败时定位输入或契约而不是放宽规则。**
+- [x] **Step 5：运行专项测试，失败时定位输入或契约而不是放宽规则。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_factor_contracts.py tests/test_momentum_factor.py tests/test_factor_research.py -q -rs
@@ -984,7 +984,7 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_research_sets.py tests/test
   预期全部通过。特别核对：全缺失资产没有消失；默认表只含一个因子；
   来源中的版本、三个指纹及复权依据保留；日期轴全部字段一致。
 
-- [ ] **Step 6：编写学习说明和运行用法。** `docs/factors.md` 按以下顺序：
+- [x] **Step 6：编写学习说明和运行用法。** `docs/factors.md` 按以下顺序：
   模块职责（接口/公式/研究服务）→ 100 到 110 的手算 → 四种状态表 →
   从现有快照调用 → 数据/公式身份 → 限制 → 本次实际验收记录。
   使用下面函数示例，不硬编码真实用户的路径或虚构集合 ID：
@@ -1005,7 +1005,7 @@ def calculate_saved_momentum(research_dir: Path, set_id: str) -> FactorRunResult
   严格窗口、不能推断真实交易能力、无盈利证明、无历史当时可得认证。
   不把缺失状态表写成数据源故障诊断；它只描述当前输入为什么算不出值。
 
-- [ ] **Step 7：完整回归、依赖和独立性检查，填写实际结果。**
+- [x] **Step 7：完整回归、依赖和独立性检查，填写实际结果。**
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest -q -rs
@@ -1049,9 +1049,8 @@ git commit -m "feat: run traceable factors on validated research snapshots"
 ## 执行记录（2026-09-23）
 
 用户已审阅计划并选择推荐方式：当前会话内逐项实现，最后统一独立审查。
-已按用户逐步学习要求先后交付 Task 1、Task 2；Task 3 尚未开始，已有
-单 ETF 动量计算，但尚未连接研究快照、追溯输出或因子界面。整份计划的
-最终独立审查尚未进行。
+已按用户逐步学习要求先后交付 Task 1、Task 2，本轮已完成 Task 3 的
+研究连接、追溯输出和测试；没有因子界面。整份计划的最终独立审查待进行。
 
 - Task 1：统一说明、数值/状态接口和显式注册已完成；现有 `compute` 调用形式保留。
 - Task 1 红灯：新增测试因 `FactorDefinition` 尚不存在而失败，与计划预期一致。
@@ -1062,5 +1061,9 @@ git commit -m "feat: run traceable factors on validated research snapshots"
 - Task 2 验证：新增 45 项测试通过，因子专项共 129 项通过；全项目 751 项通过、2 项外部接口测试跳过；依赖一致性检查通过。
 - Task 2 对照基线：706 项通过、相同的 2 项跳过；没有运行外部数据服务或读取私人行情。
 - Task 2 手算：20 期前 100、当前 110 且窗口完整时为 10%；前 20 个位置留空，窗口中间缺失亦留空。
+- Task 3 红灯：缺少研究入口时新增文件失败；新增 37 项研究测试，覆盖真实快照链路和损坏输出。
+- Task 3 计划调整：旧校验器对同名索引和日期列产生歧义，因此先清除内部行情副本的索引名称，再核验既有指纹；验证后才重置行标签。不修改数据值、顺序、调用方索引或数据层代码。
+- Task 3 验证：因子专项 166 项、数据层回归 289 项通过；全项目 788 项通过、2 项外部接口测试跳过。依赖一致性和空白检查通过，第一阶段未新增因子引用。
+- Task 3 基线：751 项通过、相同的 2 项跳过。快照独立于原目录计算，原快照字节保持不变。
 - 仅提交因子基础代码、新测试及本计划进度，未修改第一阶段/iFinD 的既有脏改动。
 - 继续使用原目录与虚拟环境；不重新安装依赖、不新建工作树、不推送或部署。
