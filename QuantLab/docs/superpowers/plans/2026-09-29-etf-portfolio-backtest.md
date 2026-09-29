@@ -13,7 +13,8 @@
 **Spec:** `docs/superpowers/specs/2026-09-29-etf-portfolio-backtest-design.md`
 （2026-09-29 用户已批准；执行者必须完整阅读设计和本计划）。
 
-**Status:** 待用户审阅本计划并选择执行方式；所有实施步骤均未执行。
+**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1 已完成，其余任务未实施。
+Task 1 验收：相关测试 181 项通过；全项目 1014 项通过、2 项外部接口测试跳过；依赖无冲突。
 
 ## Global Constraints
 
@@ -110,8 +111,8 @@ factor_value,target_weight`。ID 按信号日顺序 `PD000001` 起。可执行�
 `SKIPPED_INSUFFICIENT_FACTORS`，末日足 N 为 `EXPIRED`。过期目标仍保留
 用于解释，但不可成交；无下一日的 execution_date 为 NaT。
 
-- [ ] **Step 0：核对工作区并运行上述基线检查。** 记录实际输出后再改文件。
-- [ ] **Step 1：写失败测试。** 在新文件先写以下断言；夹具真实
+- [x] **Step 0：核对工作区并运行上述基线检查。** 890 项通过、2 项外部接口测试跳过；依赖无冲突。
+- [x] **Step 1：写失败测试。** 在新文件先写以下断言；夹具真实
   构建流程参考 `tests/test_factor_research.py::make_preview`，不导入其私有夹具。
 
 ```python
@@ -139,17 +140,17 @@ def test_skip_does_not_move_anchor(make_portfolio_preview):
 把这种注入加入公开回测入口：同值、显示舍入相同但原值不同、有效 0/负值、
 全无效和缺失都按设计；与 `top_n_factor_preview` 数值选择/权重逐日核对。
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。** 124 项均因新组合模块不存在而失败，夹具正常完成。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_selection.py -q`
   Expected: 新组合模块/接口不存在导致失败，而不是夹具导入错误。
-- [ ] **Step 3：实现上述类型和 `build_rebalance_schedule`。** 配置不静默
+- [x] **Step 3：实现上述类型和 `build_rebalance_schedule`。** 配置不静默
   转型；日期/代码键完整唯一，有效状态与有限值一致；复制而不修改输入。
   用 `range(L, M, K)`、按原值及代码排序选取；不调用 UI 私有函数或读文件。
-- [ ] **Step 4：运行绿灯与排名回归。**
+- [x] **Step 4：运行绿灯与排名回归。** 181 项通过。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_selection.py tests/test_ui_factors.py -q`
   Expected: 全部通过；日历/排序/输入不变均有断言。
-- [ ] **Step 5：新增学习说明。** 解释热身、跳过、过期、初始现金阶段和方向含义。
-- [ ] **Step 6：核对仅本任务差异后提交。** 建议消息 `feat: add portfolio rebalance scheduling`。
+- [x] **Step 5：新增学习说明。** 解释热身、跳过、过期、初始现金阶段和方向含义。
+- [x] **Step 6：核对仅本任务差异后提交。** 消息 `feat: add portfolio rebalance scheduling`；未纳入既有未提交改动。
 
 ## Task 2：费用与独立买入预算
 
@@ -479,14 +480,14 @@ def test_saved_snapshot_runs_without_original_files(make_portfolio_preview, tmp_
 
 设计覆盖：§1–3→Task 1/4/6；§4–5.1→Task 1；§5.2–6→Task 2/3；
 §7→Task 3/4/5；§8→Task 4/6；§9→各任务断言及 Task 6；§10→本交接。
-本轮只审查计划文字/接口和覆盖关系，不运行未来测试，不表示任何任务完成。
+计划审阅阶段只检查文字、接口和覆盖关系；实际实施进度以上方状态及任务勾选为准。
 
-等待用户审阅计划并选择：
+用户已审阅计划并选择第一种方式：
 
 - **当前会话逐步实施（本计划建议）**：主代理顺序完成每个任务，解释与验证后
   才进下一步，最后由独立审查者检查整体；接口依赖紧密，减少交接偏差。
 - **逐任务独立实施与审查**：每个任务由独立子代理实现，再由新的审查者检查，
   通过后进入下一任务；检查更密集，但时间与上下文消耗更高。
 
-用户确认前不开始 Task 1，不安装依赖、不创建产品模块。即使选择连续执行，
-也仅限本计划的组合核心，不能扩大为 UI、自动交易或后续阶段。
+按用户逐步学习、不一次生成全部代码的要求，本轮仅交付 Task 1。后续任务
+保留同一计划与执行记录；范围仅限组合核心，不能扩大为 UI、自动交易或后续阶段。
