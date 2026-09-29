@@ -44,7 +44,7 @@ def test_hand_calculation_metadata_and_default_registry():
     }
     left, right = create_default_registry(), create_default_registry()
     assert left is not right
-    assert left.names() == right.names() == ("momentum_20",)
+    assert set(left.names()) == set(right.names()) == {"momentum_20", "momentum_60", "momentum_120"}
     assert left.get("momentum_20") is Momentum20Factor
     assert FactorRegistry().names() == ()
 
@@ -56,8 +56,70 @@ def test_default_registries_do_not_share_mutable_registrations():
 
     left, right = create_default_registry(), create_default_registry()
     left.register(TestOnlyFactor)
-    assert left.names() == ("momentum_20", "test_only")
-    assert right.names() == create_default_registry().names() == ("momentum_20",)
+    assert set(left.names()) == {"momentum_20", "momentum_60", "momentum_120", "test_only"}
+    assert set(right.names()) == set(create_default_registry().names()) == {"momentum_20", "momentum_60", "momentum_120"}
+
+
+@pytest.mark.parametrize(("periods", "expected"), [(60, .30), (120, .60)])
+def test_long_momentum_first_valid_value_and_identity(periods, expected):
+    import quantlab.factors as factors
+
+    name = f"momentum_{periods}"
+    registry = create_default_registry()
+    assert name in registry.names(), "长周期因子尚未注册"
+    factor_type = registry.get(name)
+    assert getattr(factors, f"Momentum{periods}Factor") is factor_type
+    frame = prices(periods + 2)
+    out = factor_type().evaluate(frame)
+    assert out.values.iloc[:periods].isna().all()
+    assert out.status.iloc[:periods].eq("warmup").all()
+    assert out.values.iloc[periods] == pytest.approx(expected)
+    assert out.status.iloc[periods:].eq("valid").all()
+    assert out.values.name == name and out.values.index.identical(frame.index)
+    assert factor_type.definition.lookback_periods == periods
+    assert factor_type.definition.window_observations == periods + 1
+    assert factor_type.definition.formula == f"close[t] / close[t-{periods}] - 1"
+    assert factor_type.definition.version == "1.0"
+    pd.testing.assert_series_equal(factor_type().compute(frame), out.values)
+
+
+@pytest.mark.parametrize("periods", [60, 120])
+@pytest.mark.parametrize("gap_kind", ["first", "middle", "last"])
+def test_long_momentum_missing_window_recovers_only_after_gap_leaves(periods, gap_kind):
+    registry = create_default_registry()
+    assert f"momentum_{periods}" in registry.names()
+    factor = registry.get(f"momentum_{periods}")()
+    frame = prices(2 * periods + 2)
+    gap = {"first": 0, "middle": periods // 2, "last": periods}[gap_kind]
+    frame.loc[frame.index[gap], ["close", "has_observation"]] = [np.nan, False]
+    before = frame.copy(deep=True)
+    out = factor.evaluate(frame)
+    assert out.status.iloc[:periods].eq("warmup").all()
+    assert out.status.iloc[periods:gap + periods + 1].eq("missing_window").all()
+    assert out.values.iloc[periods:gap + periods + 1].isna().all()
+    assert out.status.iloc[gap + periods + 1:].eq("valid").all()
+    pd.testing.assert_frame_equal(frame, before)
+
+
+@pytest.mark.parametrize("periods", [60, 120])
+def test_long_momentum_short_absent_numeric_and_future_boundaries(periods):
+    registry = create_default_registry()
+    assert f"momentum_{periods}" in registry.names()
+    factor = registry.get(f"momentum_{periods}")()
+    assert factor.evaluate(prices(periods)).status.eq("warmup").all()
+    absent = factor.evaluate(prices(periods + 2).assign(close=np.nan, has_observation=False))
+    assert absent.values.isna().all()
+    assert absent.status.iloc[periods:].eq("missing_window").all()
+    extreme = prices(periods + 1)
+    extreme.loc[extreme.index[[0, periods]], "close"] = [1e-308, 1e308]
+    out = factor.evaluate(extreme)
+    assert out.status.iloc[-1] == "numeric_range" and pd.isna(out.values.iloc[-1])
+    original = prices(periods + 3)
+    changed = original.copy(deep=True)
+    changed.loc[changed.index[-1], "close"] *= 2
+    earlier, later = factor.evaluate(original), factor.evaluate(changed)
+    pd.testing.assert_series_equal(earlier.values.iloc[:-1], later.values.iloc[:-1])
+    assert earlier.values.iloc[-1] != later.values.iloc[-1]
 
 
 @pytest.mark.parametrize(("change", "expected"), [(0.0, 0.0), (-0.5, -0.10)])

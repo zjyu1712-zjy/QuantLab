@@ -45,9 +45,10 @@ class FactorRegistry:
 
 
 def create_default_registry() -> FactorRegistry:
-    """显式新建只含 momentum_20 的注册表，不运行计算或共享注册状态。"""
-    from quantlab.factors.momentum import Momentum20Factor
+    """显式登记三个固定周期动量，不运行计算或共享注册状态。"""
+    from quantlab.factors.momentum import Momentum20Factor, Momentum60Factor, Momentum120Factor
 
     registry = FactorRegistry()
-    registry.register(Momentum20Factor)
+    for factor_type in (Momentum20Factor, Momentum60Factor, Momentum120Factor):
+        registry.register(factor_type)
     return registry

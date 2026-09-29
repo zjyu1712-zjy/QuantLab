@@ -4,12 +4,12 @@
 """
 
 from quantlab.factors.base import BaseFactor, FactorDefinition, FactorEvaluation
-from quantlab.factors.momentum import Momentum20Factor
+from quantlab.factors.momentum import Momentum20Factor, Momentum60Factor, Momentum120Factor
 from quantlab.factors.registry import FactorRegistry, create_default_registry
 from quantlab.factors.research import FactorRunResult, run_research_factor
 
 __all__ = [
     "BaseFactor", "FactorDefinition", "FactorEvaluation", "FactorRegistry",
-    "Momentum20Factor", "create_default_registry",
+    "Momentum20Factor", "Momentum60Factor", "Momentum120Factor", "create_default_registry",
     "FactorRunResult", "run_research_factor",
 ]

@@ -13,7 +13,7 @@ if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from quantlab.data.research_storage import list_research_sets, load_research_set  # noqa: E402
-from quantlab.factors import FactorRunResult, run_research_factor  # noqa: E402
+from quantlab.factors import FactorRunResult, create_default_registry, run_research_factor  # noqa: E402
 from quantlab.ui.factors import (  # noqa: E402
     build_factor_chart, daily_factor_table, factor_history, history_factor_table,
 )
@@ -78,16 +78,16 @@ def _show_result(result: FactorRunResult):
     st.dataframe(table, hide_index=True, width="stretch")
     st.caption("按 ETF 代码排列，不是排名。— 表示不可计算，不是 0%；原因只描述当前输入。")
 
-    st.subheader("单只 ETF 动量变化")
+    st.subheader(f"单只 ETF {result.definition.lookback_periods} 期动量变化")
     symbol = st.selectbox("查看 ETF", [s["symbol"] for s in result.sources], key="factor_view_symbol")
     history = factor_history(result, symbol)
     st.caption("曲线展示该 ETF 的整个快照区间；上方日期只影响当日表。空值保留断点，不补零。")
     if history.is_valid.any():
-        st.altair_chart(build_factor_chart(history), width="stretch")
+        st.altair_chart(build_factor_chart(history, result.definition), width="stretch")
     else:
         st.info("这只 ETF 在当前区间没有可用因子值；请在明细中查看历史不足或窗口缺失等原因。")
     with st.expander("查看该 ETF 的逐日数值与原因"):
-        st.dataframe(history_factor_table(history), hide_index=True, width="stretch")
+        st.dataframe(history_factor_table(history, result.definition), hide_index=True, width="stretch")
     _show_provenance(result)
 
 
@@ -102,7 +102,7 @@ def render_factor_page():
         st.session_state["factor_storage_scope"] = scope
 
     st.title("因子研究")
-    st.caption("20 期价格动量 = 当前收盘价 ÷ 20 期前收盘价 − 1。期数按研究日期轴计算，不是自然日。")
+    st.caption("比较不同回看周期的历史价格变化；期数按研究日期轴计算，不是自然日。")
     st.info("仅描述历史价格变化，不是策略收益或买卖信号；本页不排名、不做组合回测、不自动下单。")
     if is_public_mode():
         st.warning("当前为临时会话，仅显示本会话的研究集合；结果不会自动保存。")
@@ -135,14 +135,25 @@ def render_factor_page():
         _clear_result()
         st.error("所选集合无法载入或校验未通过。旧结果已清除，请返回‘多 ETF 数据’检查后重试。")
         return
-    identity = (scope, selected, loaded.preview.preview_sha256)
+    registry = create_default_registry()
+    factor_names = sorted(registry.names(), key=lambda name: registry.get(name).definition.lookback_periods)
+    if st.session_state.get("factor_name") not in factor_names:
+        st.session_state.pop("factor_name", None)
+    factor_name = st.selectbox(
+        "选择因子", factor_names, key="factor_name",
+        format_func=lambda name: registry.get(name).definition.description,
+    )
+    definition = registry.get(factor_name).definition
+    periods = definition.lookback_periods
+    st.caption(f"{periods} 期价格动量 = 当前收盘价 ÷ {periods} 期前收盘价 − 1；需要 {definition.window_observations} 条完整观测。")
+    identity = (scope, selected, loaded.preview.preview_sha256, definition.name, definition.version)
     if st.session_state.get("factor_result_identity") != identity:
         _clear_result()
-    if st.button("计算 20 期动量", key="factor_calculate", type="primary"):
+    if st.button(f"计算 {periods} 期动量", key="factor_calculate", type="primary"):
         _clear_result()
         try:
             with st.spinner("正在核验快照并逐只计算……"):
-                result = run_research_factor(loaded.preview)
+                result = run_research_factor(loaded.preview, factor_name, registry=registry)
             st.session_state["factor_result"] = result
             st.session_state["factor_result_identity"] = identity
         except Exception:

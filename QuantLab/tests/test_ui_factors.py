@@ -131,6 +131,97 @@ def test_page_empty_does_not_create_snapshots(saved_factory):
     assert not page.button
 
 
+@pytest.mark.parametrize(("periods", "up", "down"), [(60, "30.00%", "-30.00%"), (120, "60.00%", "-60.00%")])
+def test_long_period_research_values_labels_and_chart(saved_factory, periods, up, down):
+    from quantlab.factors import create_default_registry
+    from quantlab.ui.factors import daily_factor_table, factor_history, history_factor_table, build_factor_chart
+
+    _, make = saved_factory
+    saved, preview, source = make(length=160)
+    name = f"momentum_{periods}"
+    assert name in create_default_registry().names()
+    before = {p.name: p.read_bytes() for p in saved.directory.iterdir()}
+    source.rename(source.with_name("moved-synthetic-source"))
+    result = run_research_factor(load_research_set(saved.directory.parent, saved.set_id).preview, name)
+    label = f"{periods} 期动量"
+    table = daily_factor_table(result, result.calendar.dates[periods])
+    assert table[label].tolist() == [down, up]
+    history = factor_history(result, "510300")
+    detail = history_factor_table(history, result.definition)
+    assert detail[label].iloc[:periods].eq("—").all()
+    assert detail["状态 / 原因"].iloc[:periods].str.contains(f"前 {periods} ").all()
+    chart = build_factor_chart(history, result.definition).to_dict()
+    assert chart["layer"][0]["encoding"]["y"]["title"] == label
+    assert chart["layer"][0]["encoding"]["tooltip"][1]["title"] == label
+    assert len(chart["data"]["values"]) == 160
+    assert result.definition.name == name
+    assert result.input_preview_sha256 == preview.preview_sha256
+    assert any(f"前 {periods} " in w for w in result.warnings)
+    assert any(f"{periods} 个自然日" in w for w in result.warnings)
+    assert not any("前 20 " in w for w in result.warnings)
+    assert {p.name: p.read_bytes() for p in saved.directory.iterdir()} == before
+
+
+@pytest.mark.parametrize("periods", [20, 60, 120])
+def test_history_helpers_infer_period_and_reject_conflicting_or_missing_identity(saved_factory, periods):
+    from quantlab.factors import Momentum20Factor, Momentum60Factor
+    from quantlab.ui.factors import factor_history, history_factor_table, build_factor_chart
+
+    _, make = saved_factory
+    _, preview, _ = make(length=160)
+    history = factor_history(run_research_factor(preview, f"momentum_{periods}"), "510300")
+    # 沿用原有单参数调用方式，也必须使用这个结果的周期而非静默默认为 20。
+    assert f"{periods} 期动量" in history_factor_table(history).columns
+    assert build_factor_chart(history).to_dict()["layer"][0]["encoding"]["y"]["title"] == f"{periods} 期动量"
+    wrong = Momentum60Factor.definition if periods == 20 else Momentum20Factor.definition
+    for display in (history_factor_table, build_factor_chart):
+        with pytest.raises(ValueError, match="不一致"):
+            display(history, wrong)
+        without_identity = history.copy(deep=True)
+        without_identity.attrs.clear()
+        with pytest.raises(ValueError, match="因子说明"):
+            display(without_identity)
+
+
+def test_page_factor_switch_clears_result_and_updates_all_period_text(saved_factory):
+    _, make = saved_factory
+    saved, preview, _ = make(length=160)
+    page = calculate(new_page(), saved.set_id)
+    assert "factor_name" in page.session_state.filtered_state, "页面尚未支持因子选择"
+    assert page.selectbox(key="factor_name").value == "momentum_20"
+    for periods, expected in [(60, ["-30.00%", "30.00%"]), (120, ["-60.00%", "60.00%"])]:
+        page.selectbox(key="factor_name").set_value(f"momentum_{periods}").run()
+        assert not page.exception
+        assert page.session_state.filtered_state.get("factor_result") is None
+        assert not page.dataframe and not page.get("vega_lite_chart")
+        assert str(periods) in page.button(key="factor_calculate").label
+        calculate(page, saved.set_id)
+        page.selectbox(key="factor_view_date").set_value(preview.alignment.calendar.dates[periods]).run()
+        assert page.dataframe[0].value[f"{periods} 期动量"].tolist() == expected
+        assert any(f"close[t] / close[t-{periods}] - 1" in c.value for c in page.code)
+        assert any(f"前 {periods} " in w.value for w in page.warning)
+        assert not any("前 20 " in w.value for w in page.warning)
+    page.selectbox(key="factor_name").set_value("momentum_20").run()
+    assert page.session_state.filtered_state.get("factor_result") is None
+    calculate(page, saved.set_id)
+    page.selectbox(key="factor_view_date").set_value(preview.alignment.calendar.dates[20]).run()
+    assert page.dataframe[0].value["20 期动量"].tolist() == ["-10.00%", "10.00%"]
+
+
+@pytest.mark.parametrize("periods", [60, 120])
+def test_long_period_page_with_short_history_is_empty_not_previous_factor(saved_factory, periods):
+    _, make = saved_factory
+    saved, _, _ = make(length=50)
+    page = calculate(new_page(), saved.set_id)
+    assert "factor_name" in page.session_state.filtered_state
+    page.selectbox(key="factor_name").set_value(f"momentum_{periods}").run()
+    calculate(page, saved.set_id)
+    assert page.dataframe[0].value[f"{periods} 期动量"].eq("—").all()
+    assert page.dataframe[0].value["状态 / 原因"].str.contains(f"前 {periods} ").all()
+    assert not page.get("vega_lite_chart")
+    assert any("没有可用" in info.value for info in page.info)
+
+
 def test_page_real_calculation_date_asset_and_provenance(saved_factory):
     _, make = saved_factory
     saved, preview, _ = make(gap=True)

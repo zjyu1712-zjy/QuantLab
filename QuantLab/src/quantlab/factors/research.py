@@ -53,12 +53,15 @@ def _validate_evaluation(evaluation: FactorEvaluation, expected_index: pd.Index)
         raise ValueError("因子输出不可用行必须为 NaN")
 
 
-def _factor_warnings(preview: ResearchSetPreview, has_valid: bool) -> tuple[str, ...]:
-    """保留原输入限制，并解释首个固定周期动量的适用边界。"""
+def _factor_warnings(
+    preview: ResearchSetPreview, definition: FactorDefinition, has_valid: bool,
+) -> tuple[str, ...]:
+    """保留原输入限制，并解释本次动量周期的适用边界。"""
+    periods = definition.lookback_periods
     messages = list(preview.warnings)
     messages.extend([
-        "20 期按研究日期轴位置计算，不代表 20 个自然日；并集可能漏掉全体缺失日。",
-        "前 20 个日期位置为热身期；窗口内任一缺失都留空，不自动读取区间外历史。",
+        f"{periods} 期按研究日期轴位置计算，不代表 {periods} 个自然日；并集可能漏掉全体缺失日。",
+        f"前 {periods} 个日期位置为热身期；窗口内任一缺失都留空，不自动读取区间外历史。",
         "因子含当日收盘价，只能在收盘数据可用后计算，不是交易指令。",
         "未使用未来行不等于输入在历史当时可得；本结果是固定数据版本上的回顾性研究。",
         "同一复权标签不保证来源算法相同；口径声明不等于认证，未在此进行复权转换。",
@@ -127,5 +130,5 @@ def run_research_factor(
         alignment_content_sha256=snapshot.alignment.content_sha256,
         start=snapshot.start, end=snapshot.end, calendar=deepcopy(snapshot.alignment.calendar),
         adjustment=snapshot.adjustment, sources=deepcopy(sources),
-        warnings=_factor_warnings(snapshot, bool(data.is_valid.any())),
+        warnings=_factor_warnings(snapshot, definition, bool(data.is_valid.any())),
     )
