@@ -1,6 +1,7 @@
 """因子页使用真实合成导入和快照，只替换存储目录与故障边界。"""
 
 from copy import deepcopy
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from itertools import count
 from math import sqrt
@@ -469,3 +470,137 @@ def test_navigation_opens_factor_page(saved_factory, monkeypatch, tmp_path):
     page.switch_page(PAGE).run()
     assert not page.exception
     assert any(t.value == "因子研究" for t in page.title)
+
+
+@pytest.mark.parametrize("ascending, codes, ranks", [
+    (False, ["510300", "510500", "159915", "512000", "513000"], ["1", "1", "3", "4", "—"]),
+    (True, ["512000", "159915", "510300", "510500", "513000"], ["1", "2", "3", "3", "—"]),
+])
+def test_ranking_uses_numeric_values_competition_ties_and_keeps_missing(saved_factory, ascending, codes, ranks):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "ranked_factor_table"), "尚未实现当日排名"
+    _, make = saved_factory
+    _, preview, _ = make()
+    result = run_research_factor(preview)
+    when = result.calendar.dates[-1]
+    # 手工给定因子结果，独立验证展示排名，不借用排名算法计算期望。
+    rows = pd.DataFrame({
+        "date": pd.to_datetime([when] * 5),
+        "symbol": ["513000", "510500", "159915", "512000", "510300"],
+        "factor_value": [np.nan, .1, 0.0, -.2, .1],
+        "status": ["missing_window", "valid", "valid", "valid", "valid"],
+        "is_valid": [False, True, True, True, True],
+    }, index=[7, 7, 9, 12, 15])
+    result = replace(result, data=rows)
+    before = deepcopy(result.data)
+    table = display.ranked_factor_table(result, when, ascending=ascending)
+    assert table["ETF 代码"].tolist() == codes
+    assert table["名次"].tolist() == ranks
+    indexed = table.set_index("ETF 代码")
+    assert indexed.loc["159915", "20 期动量"] == "0.00%"
+    assert indexed.loc["513000", "20 期动量"] == "—"
+    assert "缺失" in indexed.loc["513000", "状态 / 原因"]
+    table.loc[0, "名次"] = "changed"
+    pd.testing.assert_frame_equal(result.data, before)
+
+
+def test_ranking_does_not_round_values_into_false_ties(saved_factory):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "ranked_factor_table"), "尚未实现当日排名"
+    _, make = saved_factory
+    _, preview, _ = make()
+    result = run_research_factor(preview)
+    when = result.calendar.dates[-1]
+    rows = result.data.loc[result.data.date.dt.date.eq(when)].copy()
+    rows["factor_value"] = [.100001, .100002]
+    result = replace(result, data=rows)
+    table = display.ranked_factor_table(result, when)
+    assert table["ETF 代码"].tolist() == ["510300", "159915"]
+    assert table["名次"].tolist() == ["1", "2"]
+    assert table["20 期动量"].tolist() == ["10.00%", "10.00%"]
+
+
+@pytest.mark.parametrize("name, codes", [
+    ("momentum_20", ["510300", "159915"]),
+    ("momentum_60", ["510300", "159915"]),
+    ("momentum_120", ["510300", "159915"]),
+    ("volatility_20", ["159915", "510300"]),
+    ("volatility_60", ["159915", "510300"]),
+])
+def test_ranking_default_direction_is_factor_specific_and_date_exact(saved_factory, name, codes):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "ranked_factor_table"), "尚未实现当日排名"
+    _, make = saved_factory
+    _, preview, _ = make(length=160, gap=True, oscillating=True)
+    result = run_research_factor(preview, name)
+    when = result.calendar.dates[-1]
+    if name.startswith("momentum"):
+        # 本例完整后缀中动量相等；另给定两个有效值单独检验默认方向。
+        result.data.loc[result.data.date.dt.date.eq(when), "factor_value"] = [-.1, .1]
+    assert display.ranked_factor_table(result, when)["ETF 代码"].tolist() == codes
+    warmup = display.ranked_factor_table(result, result.calendar.dates[0])
+    assert warmup["名次"].eq("—").all() and len(warmup) == 2
+    gap_date = result.calendar.dates[max(25, result.definition.lookback_periods)]
+    gap = display.ranked_factor_table(result, gap_date).set_index("ETF 代码")
+    assert gap.loc["510300", "名次"] == "—"
+    assert gap.loc["159915", "名次"] == "1"
+    with pytest.raises(ValueError, match="日期"):
+        display.ranked_factor_table(result, date(2020, 1, 1))
+
+
+def test_page_ranking_switch_direction_date_and_read_only_snapshot(saved_factory):
+    _, make = saved_factory
+    saved, preview, _ = make(gap=True)
+    before = {p.name: p.read_bytes() for p in saved.directory.iterdir()}
+    page = calculate(new_page(), saved.set_id)
+    assert "factor_daily_order" in page.session_state.filtered_state, "页面尚未支持排名"
+    assert "名次" not in page.dataframe[0].value
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert not page.exception
+    assert page.selectbox(key="factor_rank_direction").value == "descending"
+    assert page.dataframe[0].value["ETF 代码"].tolist() == ["510300", "159915"]
+    assert page.dataframe[0].value["名次"].tolist() == ["1", "2"]
+    assert any("2 / 2" in c.value for c in page.caption)
+    page.selectbox(key="factor_rank_direction").set_value("ascending").run()
+    assert page.dataframe[0].value["ETF 代码"].tolist() == ["159915", "510300"]
+    dates = preview.alignment.calendar.dates
+    page.selectbox(key="factor_view_date").set_value(dates[25]).run()
+    assert page.dataframe[0].value["名次"].tolist() == ["1", "—"]
+    assert any("1 / 2" in c.value for c in page.caption)
+    assert any("不足两只" in i.value for i in page.info)
+    page.selectbox(key="factor_view_date").set_value(dates[0]).run()
+    assert page.dataframe[0].value["名次"].eq("—").all()
+    assert any("0 / 2" in c.value for c in page.caption)
+    assert len(page.get("vega_lite_chart")) == 1  # 日期选择不截断历史。
+    page.radio(key="factor_daily_order").set_value("ETF 代码").run()
+    assert "名次" not in page.dataframe[0].value
+    assert page.dataframe[0].value["ETF 代码"].tolist() == ["159915", "510300"]
+    assert {p.name: p.read_bytes() for p in saved.directory.iterdir()} == before
+
+
+def test_page_rank_state_resets_across_factors_and_sets_and_explains_equal_values(saved_factory):
+    _, make = saved_factory
+    saved, _, _ = make(length=100, oscillating=True)
+    other, _, _ = make(length=10)
+    page = calculate(new_page(), saved.set_id)
+    assert "factor_daily_order" in page.session_state.filtered_state, "页面尚未支持排名"
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert page.dataframe[0].value["名次"].tolist() == ["1", "1"]
+    assert any("全部相同" in i.value for i in page.info)
+    page.selectbox(key="factor_name").set_value("volatility_20").run()
+    assert not page.dataframe and not page.get("vega_lite_chart")
+    assert "factor_rank_direction" not in page.session_state.filtered_state
+    calculate(page, saved.set_id)
+    assert page.radio(key="factor_daily_order").value == "ETF 代码"
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert page.selectbox(key="factor_rank_direction").value == "ascending"
+    assert page.dataframe[0].value["20 期年化波动率"].iloc[0] == "0.00%"
+    assert page.dataframe[0].value["名次"].tolist() == ["1", "2"]
+    page.selectbox(key="factor_rank_direction").set_value("descending").run()
+    assert page.dataframe[0].value["ETF 代码"].tolist() == ["510300", "159915"]
+    page.selectbox(key="factor_set_id").set_value(other.set_id).run()
+    assert not page.dataframe
+    assert "factor_rank_direction" not in page.session_state.filtered_state

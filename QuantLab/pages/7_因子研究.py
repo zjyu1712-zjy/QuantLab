@@ -16,7 +16,7 @@ from quantlab.data.research_storage import list_research_sets, load_research_set
 from quantlab.factors import FactorRunResult, create_default_registry, run_research_factor  # noqa: E402
 from quantlab.ui.factors import (  # noqa: E402
     build_factor_chart, daily_factor_table, factor_history, history_factor_table,
-    factor_label, factor_explanation,
+    factor_label, factor_explanation, ranked_factor_table,
 )
 from quantlab.ui.runtime import get_research_storage_dir, is_public_mode, require_access  # noqa: E402
 
@@ -32,7 +32,8 @@ SOURCE_LABELS = {
 
 
 def _clear_result():
-    for key in ("factor_result", "factor_result_identity", "factor_view_date", "factor_view_symbol"):
+    for key in ("factor_result", "factor_result_identity", "factor_view_date", "factor_view_symbol",
+                "factor_daily_order", "factor_rank_direction"):
         st.session_state.pop(key, None)
 
 
@@ -61,6 +62,44 @@ def _show_provenance(result: FactorRunResult):
             st.warning(warning)
 
 
+def _show_daily_comparison(result: FactorRunResult):
+    """排名只改变当日表的呈现，不筛选 ETF、不截断历史曲线。"""
+    st.subheader("当日结果")
+    selected_date = st.selectbox(
+        "查看日期", result.calendar.dates, index=len(result.calendar.dates) - 1, key="factor_view_date",
+        format_func=lambda value: value.isoformat(),
+        help="只显示这个日期，不自动回退到更早的有效值。",
+    )
+    order = st.radio("当日表显示方式", ["ETF 代码", "因子排名"], horizontal=True, key="factor_daily_order")
+    if order == "因子排名":
+        directions = {"descending": "从高到低", "ascending": "从低到高"}
+        direction = st.selectbox(
+            "排名方向", list(directions), key="factor_rank_direction",
+            index=int(result.definition.direction == "higher_is_more_volatile"),
+            format_func=directions.__getitem__,
+        )
+        table = ranked_factor_table(result, selected_date, ascending=direction == "ascending")
+        valid_ranks = table.loc[table["名次"].ne("—"), "名次"]
+        st.caption(
+            f"{selected_date.isoformat()} · {factor_label(result.definition)} · {directions[direction]} · "
+            f"可参与排名 / 集合总数：{len(valid_ranks)} / {len(table)}（只 ETF）"
+        )
+        st.dataframe(table, hide_index=True, width="stretch")
+        st.caption(
+            "仅在当前集合、日期和因子周期内比较。按未四舍五入数值排名，同值并列（如 1、1、3）；"
+            "并列项按 ETF 代码排列。显示值相同可能仍有细微差异，名次不一定相同。"
+        )
+        st.caption("名次只是所选方向的排列，不是投资优劣或买卖建议；缺失项保留在表尾，不占名次。")
+        if len(valid_ranks) < 2:
+            st.info("当日可参与排名的 ETF 不足两只，无法进行有效的横向比较。")
+        elif valid_ranks.nunique() == 1:
+            st.info("当日可用因子值全部相同，均为并列第 1 名，无法据此区分 ETF。")
+    else:
+        st.dataframe(daily_factor_table(result, selected_date), hide_index=True, width="stretch")
+        st.caption("按 ETF 代码排列，不是排名。")
+    st.caption("— 表示不可计算，不是 0%；原因只描述当前输入。")
+
+
 def _show_result(result: FactorRunResult):
     axis = result.calendar
     st.caption(
@@ -69,15 +108,7 @@ def _show_result(result: FactorRunResult):
     )
     if result.adjustment == "none":
         st.caption("当前使用未复权价格，分红、拆并份额可能影响价格变化及其波动；不是总回报口径。")
-    st.subheader("当日结果")
-    selected_date = st.selectbox(
-        "查看日期", axis.dates, index=len(axis.dates) - 1, key="factor_view_date",
-        format_func=lambda value: value.isoformat(),
-        help="只显示这个日期，不自动回退到更早的有效值。",
-    )
-    table = daily_factor_table(result, selected_date)
-    st.dataframe(table, hide_index=True, width="stretch")
-    st.caption("按 ETF 代码排列，不是排名。— 表示不可计算，不是 0%；原因只描述当前输入。")
+    _show_daily_comparison(result)
 
     st.subheader(f"单只 ETF {factor_label(result.definition)}变化")
     symbol = st.selectbox("查看 ETF", [s["symbol"] for s in result.sources], key="factor_view_symbol")
@@ -104,7 +135,7 @@ def render_factor_page():
 
     st.title("因子研究")
     st.caption("查看历史价格动量与收益率波动；期数按研究日期轴计算，不是自然日。")
-    st.info("仅描述历史价格变化，不是策略收益或买卖信号；本页不排名、不做组合回测、不自动下单。")
+    st.info("仅描述历史价格变化；排名不是策略收益或买卖信号，本页不做组合回测、不自动下单。")
     if is_public_mode():
         st.warning("当前为临时会话，仅显示本会话的研究集合；结果不会自动保存。")
 

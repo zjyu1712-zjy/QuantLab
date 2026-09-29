@@ -41,12 +41,33 @@ def _display_table(data: pd.DataFrame, definition: FactorDefinition) -> pd.DataF
     }).reset_index(drop=True)
 
 
-def daily_factor_table(result: FactorRunResult, selected_date: date) -> pd.DataFrame:
-    """只取指定日期的全部 ETF，不查找各自最近一次有效值或排名。"""
+def _daily_rows(result: FactorRunResult, selected_date: date) -> pd.DataFrame:
+    """只复制指定日期，不回退到之前的有效值，也不修改计算结果。"""
     if selected_date not in result.calendar.dates:
         raise ValueError("查看日期不在研究日期轴内")
-    rows = result.data.loc[result.data.date.dt.date.eq(selected_date)]
+    return result.data.loc[result.data.date.dt.date.eq(selected_date)].copy(deep=True).reset_index(drop=True)
+
+
+def daily_factor_table(result: FactorRunResult, selected_date: date) -> pd.DataFrame:
+    """按 ETF 代码显示指定日期的全部 ETF，不排名。"""
+    rows = _daily_rows(result, selected_date).sort_values("symbol")
     return _display_table(rows, result.definition).drop(columns="日期")
+
+
+def ranked_factor_table(
+    result: FactorRunResult, selected_date: date, *, ascending: bool | None = None,
+) -> pd.DataFrame:
+    """单日、单因子排名；原始值同值并列，缺失留在表尾且不占名次。"""
+    if ascending is None:
+        ascending = result.definition.direction == "higher_is_more_volatile"
+    rows = _daily_rows(result, selected_date)
+    # run_research_factor 已保证有效值有限、不可用值为 NaN。
+    # 先排名再格式化，避免百分比舍入造成假并列；有效的 0 正常参与。
+    rows["rank"] = rows.factor_value.where(rows.is_valid).rank(method="min", ascending=ascending)
+    rows = rows.sort_values(["rank", "symbol"], na_position="last").reset_index(drop=True)
+    table = _display_table(rows, result.definition).drop(columns="日期")
+    table.insert(0, "名次", rows["rank"].map(lambda rank: "—" if pd.isna(rank) else str(int(rank))))
+    return table
 
 
 def factor_history(result: FactorRunResult, symbol: str) -> pd.DataFrame:
