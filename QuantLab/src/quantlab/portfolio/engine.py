@@ -151,10 +151,16 @@ def _fill_order(state, row, code, side, requested, filled, market, config, day, 
                 _fail("卖出费用超过成交额，净收入为负", "negative_sell_proceeds", day, (code,))
             if costs > 0 and proceeds >= notional:
                 _fail("卖出金额精度不足，无法保留正佣金或税费", "numeric_range", day, (code,))
-            state.cash = _sum((state.cash, proceeds), "卖出后现金", day, (code,))
+            cash_after = _sum((state.cash, proceeds), "卖出后现金", day, (code,))
+            if proceeds > 0 and cash_after <= state.cash:
+                _fail("现金余额精度不足，无法保留非零卖出收入", "numeric_range", day, (code,))
+            state.cash = cash_after
             state.holdings[code] -= filled
         else:
-            state.cash = _cash(_sum((state.cash, -notional, -fee), "买入后现金", day, (code,)), day)
+            cash_after = _cash(_sum((state.cash, -notional, -fee), "买入后现金", day, (code,)), day)
+            if cash_after >= state.cash:
+                _fail("现金余额精度不足，无法保留非零买入支出", "numeric_range", day, (code,))
+            state.cash = cash_after
             state.holdings[code] += filled
         _check_quantity(state.holdings[code], int(config.backtest.lot_size), day, code)
         state.fees = _sum((state.fees, costs), "累计佣金税费", day, (code,))

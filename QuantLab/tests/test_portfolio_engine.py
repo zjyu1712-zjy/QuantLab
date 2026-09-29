@@ -139,6 +139,38 @@ def test_positive_sell_cost_cannot_be_swallowed_by_large_notional(cost_kind):
     assert caught.value.symbols == (A,)
 
 
+@pytest.mark.parametrize("second_open", [1.0, 0.9999999999999996], ids=["sell", "buy"])
+def test_nonzero_trade_cash_flow_cannot_disappear_in_large_balance(second_open):
+    codes = tuple(f"{510000 + index:06d}" for index in range(10))
+    prices = {code: [(1e20, 1e20)] * 3 for code in codes}
+    prices[codes[0]] = [(1.0, 1.0), (1.0, 1.0), (second_open, second_open)]
+    case = make_case(prices=prices, signals=((0, codes), (1, codes)), top_n=10,
+                     backtest=BacktestConfig(initial_cash=1e17, lot_size=1,
+                                            commission_rate=1e-15, slippage_rate=0))
+    before = deepcopy(case)
+    with pytest.raises(PortfolioBacktestError, match="现金") as caught:
+        simulate(case)
+    assert caught.value.reason == "numeric_range"
+    assert caught.value.date == case[1].dates[2]
+    assert caught.value.symbols == (codes[0],)
+    pd.testing.assert_frame_equal(case[0], before[0])
+    pd.testing.assert_frame_equal(case[2].decisions, before[2].decisions)
+    pd.testing.assert_frame_equal(case[2].targets, before[2].targets)
+
+
+def test_zero_net_sale_can_leave_positive_cash_unchanged():
+    case = make_case(prices={A: [(1, 1), (1, 1), (0.2, 0.2)],
+                            B: [(10000, 10000)] * 3, C: [(20000, 20000)] * 3},
+                     signals=((0, (A, B)), (1, (B, C))), top_n=2,
+                     backtest=BacktestConfig(initial_cash=1000, lot_size=1,
+                         commission_rate=0, minimum_commission=100, slippage_rate=0))
+    result = simulate(case)
+    assert result.trades.side.tolist() == ["BUY", "SELL"]
+    assert result.trades.iloc[-1].notional == result.trades.iloc[-1].commission == 100
+    assert result.trades.cash_after.tolist() == [400.0, 400.0]
+    assert result.equity_curve.iloc[-1].equity == 400
+
+
 def test_partial_and_rejected_orders_keep_requests_and_reasons():
     case = make_case(prices={A: [(10, 10)] * 3, B: [(50, 50)] * 3},
                      signals=((0, (A, B)),),

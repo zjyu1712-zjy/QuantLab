@@ -3,6 +3,7 @@
 import ast
 from copy import deepcopy
 from dataclasses import asdict
+from datetime import datetime, timezone
 from importlib.util import resolve_name
 from math import fsum
 from pathlib import Path
@@ -14,7 +15,7 @@ import pytest
 from quantlab.config.settings import BacktestConfig
 from quantlab.data.research_storage import load_research_set, save_research_set
 from quantlab.portfolio import (
-    PortfolioConfig, analyze_portfolio_result, run_factor_portfolio,
+    PortfolioBacktestError, PortfolioConfig, analyze_portfolio_result, run_factor_portfolio,
 )
 
 
@@ -121,6 +122,41 @@ def test_supplied_axis_keeps_all_missing_cash_day(make_portfolio_preview):
     analysis = analyze_portfolio_result(kept)
     assert len(analysis.performance.daily_returns) == 64
     assert analysis.performance.daily_returns.loc[missing_day] == 0
+
+
+def test_public_run_rejects_lost_cash_flow_without_partial_result(tmp_path):
+    """有限数值不等于精度足够：大余额不能吞掉卖出后约 2 元的真实现金流。"""
+    from quantlab.data.catalog import scan_market_catalog
+    from quantlab.data.importer import import_market_csv
+    from quantlab.data.research_sets import DatasetSelection, build_research_set
+
+    dates = pd.date_range("2025-01-02", periods=24, freq="B")
+    raw, processed = tmp_path / "raw", tmp_path / "processed"
+    for index in range(10):
+        code = f"{510000 + index:06d}"
+        price = 1.0 if index == 0 else 1e20
+        source = tmp_path / f"{code}.csv"
+        pd.DataFrame({"date": dates, "symbol": code, "open": price, "high": price,
+                      "low": price, "close": price, "volume": 1000.0}).to_csv(source, index=False)
+        import_market_csv(source, raw, processed,
+                          imported_at=datetime(2025, 9, 1, tzinfo=timezone.utc))
+    catalog = scan_market_catalog(processed, raw)
+    assert not catalog.issues and len(catalog.records) == 10
+    preview = build_research_set(
+        tuple(DatasetSelection(record, "none") for record in catalog.records),
+        start=dates[0].date(), end=dates[-1].date(),
+    )
+    before, before_files = deepcopy(preview), _files(tmp_path)
+    config = PortfolioConfig(top_n=10, rebalance_interval=1,
+                             backtest=BacktestConfig(initial_cash=1e17, lot_size=1,
+                                                    commission_rate=1e-15, slippage_rate=0))
+    with pytest.raises(PortfolioBacktestError, match="现金") as caught:
+        run_factor_portfolio(preview, factor_name="momentum_20", config=config)
+    assert caught.value.reason == "numeric_range"
+    assert caught.value.date == dates[22].date()
+    assert caught.value.symbols == ("510000",)
+    _assert_preview_unchanged(preview, before)
+    assert _files(tmp_path) == before_files
 
 
 def test_stage1_has_no_portfolio_or_factor_dependency():
