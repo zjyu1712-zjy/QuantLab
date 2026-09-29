@@ -13,8 +13,9 @@
 **Spec:** `docs/superpowers/specs/2026-09-29-etf-portfolio-backtest-design.md`
 （2026-09-29 用户已批准；执行者必须完整阅读设计和本计划）。
 
-**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1 已完成，其余任务未实施。
+**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–2 已完成，Task 3–6 未实施。
 Task 1 验收：相关测试 181 项通过；全项目 1014 项通过、2 项外部接口测试跳过；依赖无冲突。
+Task 2 验收：费用与预算测试 110 项通过；全项目 1124 项通过、2 项外部接口测试跳过；依赖无冲突。
 
 ## Global Constraints
 
@@ -167,7 +168,7 @@ Produces 以下内部纯函数，不从包顶层导出：
 - `affordable_lot_quantity(budget: float, price: float, max_quantity: int, config: BacktestConfig) -> int`。
 - `allocate_buys(cash: float, requests: dict[str, int], opens: dict[str, float], config: BacktestConfig) -> dict[str, int]`：返回每个申请代码的实际份额，包括 0。
 
-- [ ] **Step 1：写失败测试。**
+- [x] **Step 1：写失败测试。**
 
 ```python
 def test_minimum_fees_reduce_both_buys_without_code_priority():
@@ -191,19 +192,19 @@ def test_slippage_and_each_side_cost():
 插入顺序不影响结果；不把余款重新分配；最大份额很大也不逐手递减。
 非法/非有限参数和运算溢出为 `PortfolioBacktestError`，无 NaN/inf 结果。
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。** 107 项均因新执行模块缺失而报错；另补精度回归，观察非零滑点丢失的 2 项断言失败。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_execution.py -q`
   Expected: 新纯函数缺失对应的失败。
-- [ ] **Step 3：实现四个纯函数。** 完整需求金额按代码升序用 `math.fsum`
+- [x] **Step 3：实现四个纯函数。** 完整需求金额按代码升序用 `math.fsum`
   累加，先一次性决定预算，后求各自最大可买手数。使用整数手数二分或代数
   上界后验证，不能从巨大需求逐手递减。仅对 `d_i>0` 计需求及最低佣金。
   不四舍五入成交额到分；量和现金判断使用真实精度。`MONEY_ATOL=1e-9`
   仅用于运算后近零余额校验/归整，不用于买入多一手；不使用相对容差融资。
-- [ ] **Step 4：运行绿灯。**
+- [x] **Step 4：运行绿灯。** 110 项通过。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_execution.py -q`
   Expected: 全部通过，包括预算合计、顺序独立与大数量用例。
-- [ ] **Step 5：更新预算示例。** 文档用 100000 元及两笔最低佣金解释 1990 元余款。
-- [ ] **Step 6：核对差异后提交本任务文件。** 建议消息 `feat: add cost-aware portfolio allocation`。
+- [x] **Step 5：更新预算示例。** 文档用 100000 元及两笔最低佣金解释 1990 元余款。
+- [x] **Step 6：核对差异后提交本任务文件。** 消息 `feat: add cost-aware portfolio allocation`；仅费用/预算模块、测试和相关文档，未纳入既有改动。
 
 ## Task 3：多资产现金、订单与每日估值
 
@@ -489,5 +490,5 @@ def test_saved_snapshot_runs_without_original_files(make_portfolio_preview, tmp_
 - **逐任务独立实施与审查**：每个任务由独立子代理实现，再由新的审查者检查，
   通过后进入下一任务；检查更密集，但时间与上下文消耗更高。
 
-按用户逐步学习、不一次生成全部代码的要求，本轮仅交付 Task 1。后续任务
+按用户逐步学习、不一次生成全部代码的要求，每轮只交付一个已确认的小步。后续任务
 保留同一计划与执行记录；范围仅限组合核心，不能扩大为 UI、自动交易或后续阶段。
