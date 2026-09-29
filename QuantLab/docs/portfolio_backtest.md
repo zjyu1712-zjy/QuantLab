@@ -13,8 +13,8 @@
 实际买了多少须查看订单/成交表，不能把流程完成等同于所有目标都买足。
 现有因子页面的每日 Top N 预览仍可使用，但没有自动接入此引擎。
 
-后续进行端到端验收与整体独立复查。
-验收完成后才完成本轮组合回测核心计划，仍不涉及自动交易。
+第 6 步的 52 项端到端验收已通过；全项目回归与整体独立复查结果见文末。
+本轮只验收组合回测 Python 核心，不等于第二阶段全部完成，也不涉及自动交易。
 
 ## 第 1 步的代码分别做什么
 
@@ -468,7 +468,7 @@ print(p.unavailable_reasons)  # 只列未定义指标及原因
 ```
 
 结果仍在内存中，不自动保存或显示到页面；不包含胜率、盈亏比、组合基准或超额收益。
-下一步是完整链路验收和整体复查，不是直接扩大到新策略。
+完整链路验收和整体复查见第 6 步，不在本计划内扩大到新策略。
 
 ### 验证方法
 
@@ -478,3 +478,79 @@ PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_analysis.py tests
 
 测试覆盖 1/2/3 个观测、全现金、手算费用与完整热身、旧公式一致性、非零/负无风险利率、
 夏普阈值、结果隔离及再次分析、缺失/重排日期、损坏快照、非法参数和有限输入下的指标溢出。
+
+## 第 6 步：完整链路验收
+
+新增 `tests/test_portfolio_acceptance.py`，不新增业务入口。测试的作用是把
+前五步真正连接起来，验证模块分别正确时，连接后仍保持同样的规则。
+
+1. **脱离源文件重放。** 用真实 CSV 导入、构建并保存 65 日期研究集合，
+   将临时源目录改名后重读快照、回测、分析。八张业务表与保存前运行一致；
+   运行编号可以不同，但输入和业务结果不变。快照文件字节不变，也没有自动生成档案。
+2. **检查时序隔离。** 对 20 期动量和波动率分别选 1/2 只，每期调仓，
+   只改变位置 30 起的未来价格。严格早于该时点的决策、目标、订单、成交、
+   持仓、资产与因子均不变。这个检查不证明历史数据当时可得或不存在幸存者偏差。
+3. **区分日期轴。** 两只 ETF 在热身期同一天无记录时，用户提供的日期轴
+   仍保留这一天的现金估值；行情并集轴会遗漏该日，两者不能当成同一输入。
+4. **检查旧模块边界。** 解析第一阶段数据、指标、策略、回测和配置模块的
+   导入语句，确保没有反向引入 `portfolio` 或 `factors`。
+5. **独立对账。** 45 种组合覆盖五个因子、默认/正/反方向、不同 N/K、
+   手数、佣金下限、卖出税与滑点。逐笔用成交额、佣金和税重算现金与份额，
+   每日检查市值、总资产、权重、累计费用及完整区间收益；不复用引擎内部记账函数。
+
+这些都是合成数据的自动化验收，不是策略有效性、真实可成交性或盈利证明。
+
+### 从已保存研究集合开始
+
+以下代码放在 Python 脚本内运行；`set_id` 替换为已保存研究集合的实际编号。
+该集合需要至少两只 ETF；路径也应指向你实际保存集合的目录。
+
+```python
+from pathlib import Path
+from quantlab.data.research_storage import load_research_set
+from quantlab.portfolio import (
+    PortfolioBacktestError, PortfolioConfig,
+    analyze_portfolio_result, run_factor_portfolio,
+)
+
+preview = load_research_set(
+    Path("data/research_sets"), "替换为实际研究集合编号",
+).preview
+
+try:
+    result = run_factor_portfolio(
+        preview, factor_name="momentum_20",
+        config=PortfolioConfig(top_n=2, rebalance_interval=20),
+    )
+    analysis = analyze_portfolio_result(result)
+except PortfolioBacktestError as error:
+    # 缺少必要价格等错误时，没有完整期间的成功结果。
+    print(error.reason, error.date, error.symbols, str(error))
+else:
+    print(analysis.performance.cumulative_return)
+    print(analysis.performance.unavailable_reasons)
+    print(analysis.performance.net_value)
+    print(result.orders)   # 包括买不足或买不到的申请
+    print(result.trades)   # 只有实际模拟成交及费用
+```
+
+阅读结果时，先看 `decisions` 的跳过/过期原因和 `metadata["warnings"]`，
+再看目标与实际持仓差异，最后查看完整资产曲线及绩效。不能仅凭一个收益数字判断策略。
+
+### 验收范围与下一步
+
+本轮完成单因子 Top N、固定间隔、下一研究期开盘、只做多不融资的组合核心。
+尚未实现组合界面、基准/超额收益、组合档案和下载、胜率与盈亏匹配、稳健性检验。
+下一小步建议单独设计 Streamlit 组合研究入口，不自动扩大本次交付。
+
+验证针对当前工作区，其中仍有此前未提交的实现（包括既有
+`backtest/provenance.py`）。本轮没有替用户提交这些文件，不能把单独检出的
+本轮提交描述为自包含的可发布版本。没有运行浏览器验收或真实外部行情接口。
+
+### 本次执行记录（2026-09-30）
+
+- 开始前全项目基线：1291 项通过、2 项外部接口测试跳过。
+- 新增端到端验收：52 项通过，用时 10.71 秒；现有实现已满足这些断言，未人为制造失败。
+- 全项目回归：1343 项通过、2 项跳过，用时 49.86 秒。跳过的是默认不联网的
+  AkShare 检查，以及需要显式开关和凭证的 iFinD 集成测试。
+- 依赖检查无冲突，差异检查无空白错误；整体独立审查结果待补记。
