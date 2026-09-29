@@ -103,6 +103,12 @@ navigation = st.navigation(
         ],
         "实验": [
             st.Page(
+                PROJECT_ROOT / "pages" / "7_因子研究.py",
+                title="因子研究",
+                icon=":material/query_stats:",
+                url_path="factor_research",
+            ),
+            st.Page(
                 PROJECT_ROOT / "pages" / "3_双均线回测.py",
                 title="策略实验",
                 icon=":material/science:",
