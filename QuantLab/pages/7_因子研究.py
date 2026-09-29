@@ -16,6 +16,7 @@ from quantlab.data.research_storage import list_research_sets, load_research_set
 from quantlab.factors import FactorRunResult, create_default_registry, run_research_factor  # noqa: E402
 from quantlab.ui.factors import (  # noqa: E402
     build_factor_chart, daily_factor_table, factor_history, history_factor_table,
+    factor_label, factor_explanation,
 )
 from quantlab.ui.runtime import get_research_storage_dir, is_public_mode, require_access  # noqa: E402
 
@@ -42,7 +43,7 @@ def _show_provenance(result: FactorRunResult):
         st.code(definition.formula, language=None)
         st.write(
             f"回看 {definition.lookback_periods} 期，含当前期共 {definition.window_observations} 条观测；"
-            "整个窗口必须完整，收盘数据可用后计算。数值越大只表示过去涨幅更高。"
+            "整个窗口必须完整，收盘数据可用后计算。" + factor_explanation(definition)
         )
         sources = pd.DataFrame(result.sources).rename(columns=SOURCE_LABELS)
         sources["价格口径"] = sources["价格口径"].map(ADJUSTMENTS)
@@ -67,7 +68,7 @@ def _show_result(result: FactorRunResult):
         f"{len(axis.dates)} 个日期位置 · {ADJUSTMENTS[result.adjustment]} · {MODES[axis.mode]}"
     )
     if result.adjustment == "none":
-        st.caption("当前使用未复权价格，可能受分红、拆并份额影响；价格动量不是总回报。")
+        st.caption("当前使用未复权价格，分红、拆并份额可能影响价格变化及其波动；不是总回报口径。")
     st.subheader("当日结果")
     selected_date = st.selectbox(
         "查看日期", axis.dates, index=len(axis.dates) - 1, key="factor_view_date",
@@ -78,7 +79,7 @@ def _show_result(result: FactorRunResult):
     st.dataframe(table, hide_index=True, width="stretch")
     st.caption("按 ETF 代码排列，不是排名。— 表示不可计算，不是 0%；原因只描述当前输入。")
 
-    st.subheader(f"单只 ETF {result.definition.lookback_periods} 期动量变化")
+    st.subheader(f"单只 ETF {factor_label(result.definition)}变化")
     symbol = st.selectbox("查看 ETF", [s["symbol"] for s in result.sources], key="factor_view_symbol")
     history = factor_history(result, symbol)
     st.caption("曲线展示该 ETF 的整个快照区间；上方日期只影响当日表。空值保留断点，不补零。")
@@ -102,7 +103,7 @@ def render_factor_page():
         st.session_state["factor_storage_scope"] = scope
 
     st.title("因子研究")
-    st.caption("比较不同回看周期的历史价格变化；期数按研究日期轴计算，不是自然日。")
+    st.caption("查看历史价格动量与收益率波动；期数按研究日期轴计算，不是自然日。")
     st.info("仅描述历史价格变化，不是策略收益或买卖信号；本页不排名、不做组合回测、不自动下单。")
     if is_public_mode():
         st.warning("当前为临时会话，仅显示本会话的研究集合；结果不会自动保存。")
@@ -136,7 +137,9 @@ def render_factor_page():
         st.error("所选集合无法载入或校验未通过。旧结果已清除，请返回‘多 ETF 数据’检查后重试。")
         return
     registry = create_default_registry()
-    factor_names = sorted(registry.names(), key=lambda name: registry.get(name).definition.lookback_periods)
+    factor_names = sorted(
+        registry.names(), key=lambda name: (name.partition("_")[0], registry.get(name).definition.lookback_periods),
+    )
     if st.session_state.get("factor_name") not in factor_names:
         st.session_state.pop("factor_name", None)
     factor_name = st.selectbox(
@@ -145,11 +148,18 @@ def render_factor_page():
     )
     definition = registry.get(factor_name).definition
     periods = definition.lookback_periods
-    st.caption(f"{periods} 期价格动量 = 当前收盘价 ÷ {periods} 期前收盘价 − 1；需要 {definition.window_observations} 条完整观测。")
+    if definition.direction == "higher_is_more_volatile":
+        st.caption(
+            f"{definition.description} = 最近 {periods} 个简单收益率的样本标准差 × √252；"
+            f"需要 {definition.window_observations} 条完整收盘价观测。252 为固定年化假设。"
+        )
+        st.caption(factor_explanation(definition))
+    else:
+        st.caption(f"{periods} 期价格动量 = 当前收盘价 ÷ {periods} 期前收盘价 − 1；需要 {definition.window_observations} 条完整观测。")
     identity = (scope, selected, loaded.preview.preview_sha256, definition.name, definition.version)
     if st.session_state.get("factor_result_identity") != identity:
         _clear_result()
-    if st.button(f"计算 {periods} 期动量", key="factor_calculate", type="primary"):
+    if st.button(f"计算 {factor_label(definition)}", key="factor_calculate", type="primary"):
         _clear_result()
         try:
             with st.spinner("正在核验快照并逐只计算……"):

@@ -56,7 +56,7 @@ def _validate_evaluation(evaluation: FactorEvaluation, expected_index: pd.Index)
 def _factor_warnings(
     preview: ResearchSetPreview, definition: FactorDefinition, has_valid: bool,
 ) -> tuple[str, ...]:
-    """保留原输入限制，并解释本次动量周期的适用边界。"""
+    """保留原输入限制，并解释本次因子的口径与适用边界。"""
     periods = definition.lookback_periods
     messages = list(preview.warnings)
     messages.extend([
@@ -66,7 +66,15 @@ def _factor_warnings(
         "未使用未来行不等于输入在历史当时可得；本结果是固定数据版本上的回顾性研究。",
         "同一复权标签不保证来源算法相同；口径声明不等于认证，未在此进行复权转换。",
     ])
-    if preview.adjustment == "none":
+    if definition.direction == "higher_is_more_volatile":
+        messages.extend([
+            "使用相邻收盘价的简单收益率样本标准差（ddof=1），按每年 252 期假设乘以 sqrt(252)；不是未来波动预测。",
+            "年化基于等间隔日线假设；日期轴未经完整核验或遗漏日期时，相邻收益率可能跨多个交易日，年化值仅供近似研究。",
+            "数值越大表示历史收益率波动越大；低波动不保证安全，也不代表收益更高。",
+        ])
+        if preview.adjustment == "none":
+            messages.append("未复权价格的分红、拆并份额跳变可能影响波动率；当前并非总回报收益率的波动。")
+    elif preview.adjustment == "none":
         messages.append("未复权价格可能受分红、拆并份额影响，价格动量不能当作总回报。")
     if not has_valid:
         messages.append("本研究区间没有可用因子值，请核对历史长度和窗口内缺失情况。")

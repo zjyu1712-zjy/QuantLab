@@ -44,7 +44,9 @@ def test_hand_calculation_metadata_and_default_registry():
     }
     left, right = create_default_registry(), create_default_registry()
     assert left is not right
-    assert set(left.names()) == set(right.names()) == {"momentum_20", "momentum_60", "momentum_120"}
+    assert set(left.names()) == set(right.names()) == {
+        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60",
+    }
     assert left.get("momentum_20") is Momentum20Factor
     assert FactorRegistry().names() == ()
 
@@ -56,8 +58,11 @@ def test_default_registries_do_not_share_mutable_registrations():
 
     left, right = create_default_registry(), create_default_registry()
     left.register(TestOnlyFactor)
-    assert set(left.names()) == {"momentum_20", "momentum_60", "momentum_120", "test_only"}
-    assert set(right.names()) == set(create_default_registry().names()) == {"momentum_20", "momentum_60", "momentum_120"}
+    assert set(left.names()) == {
+        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60", "test_only",
+    }
+    assert "test_only" not in right.names()
+    assert set(right.names()) == set(create_default_registry().names())
 
 
 @pytest.mark.parametrize(("periods", "expected"), [(60, .30), (120, .60)])

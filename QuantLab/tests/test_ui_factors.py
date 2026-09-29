@@ -3,6 +3,7 @@
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from itertools import count
+from math import sqrt
 import json
 from pathlib import Path
 
@@ -30,12 +31,16 @@ def saved_factory(tmp_path, monkeypatch):
     monkeypatch.delenv("QUANTLAB_ACCESS_PASSWORD", raising=False)
     monkeypatch.setattr(runtime, "get_research_storage_dir", lambda project: root)
 
-    def make(*, gap=False, length=50, name="合成因子验收", outside=False):
+    def make(*, gap=False, length=50, name="合成因子验收", outside=False, oscillating=False):
         source_dir = tmp_path / f"source_{next(sequence)}"
         source_dir.mkdir()
         dates = pd.date_range("2025-01-02", periods=length, freq="B")
-        for symbol, close in (("510300", 100.0 + np.arange(length) * .5),
-                               ("159915", 200.0 - np.arange(length))):
+        paths = (("510300", 100.0 + np.arange(length) * .5),
+                 ("159915", 200.0 - np.arange(length)))
+        if oscillating:
+            paths = (("510300", np.where(np.arange(length) % 2, 110.0, 100.0)),
+                     ("159915", np.full(length, 200.0)))
+        for symbol, close in paths:
             frame = pd.DataFrame({
                 "date": dates + pd.Timedelta(days=365) if outside and symbol == "159915" else dates,
                 "symbol": symbol, "open": close, "high": close, "low": close,
@@ -218,6 +223,90 @@ def test_long_period_page_with_short_history_is_empty_not_previous_factor(saved_
     calculate(page, saved.set_id)
     assert page.dataframe[0].value[f"{periods} 期动量"].eq("—").all()
     assert page.dataframe[0].value["状态 / 原因"].str.contains(f"前 {periods} ").all()
+    assert not page.get("vega_lite_chart")
+    assert any("没有可用" in info.value for info in page.info)
+
+
+@pytest.mark.parametrize("periods", [20, 60])
+def test_volatility_snapshot_calculation_and_presentation_are_read_only(saved_factory, periods):
+    from quantlab.factors import create_default_registry, Momentum20Factor
+    from quantlab.ui.factors import daily_factor_table, factor_history, history_factor_table, build_factor_chart
+
+    _, make = saved_factory
+    saved, preview, source = make(length=100, gap=True, oscillating=True)
+    name = f"volatility_{periods}"
+    assert name in create_default_registry().names()
+    before = {p.name: p.read_bytes() for p in saved.directory.iterdir()}
+    source.rename(source.with_name("removed-volatility-synthetic-source"))
+    result = run_research_factor(load_research_set(saved.directory.parent, saved.set_id).preview, name)
+    assert result.input_preview_sha256 == preview.preview_sha256
+    label = f"{periods} 期年化波动率"
+    # 100/110 交替价格产生等量的 +10% 和 -1/11 简单收益率。
+    expected = (21 / 220) * sqrt(252 * periods / (periods - 1))
+    table = daily_factor_table(result, result.calendar.dates[-1])
+    assert table[label].tolist() == ["0.00%", f"{expected:.2%}"]
+    history = factor_history(result, "510300")
+    detail = history_factor_table(history)
+    assert detail[label].iloc[:periods].eq("—").all()
+    assert detail[label].iloc[max(25, periods):26 + periods].eq("—").all()
+    assert "缺失" in detail["状态 / 原因"].iloc[max(25, periods)]
+    assert history.factor_value.iloc[26 + periods] == pytest.approx(expected)
+    chart = build_factor_chart(history).to_dict()
+    assert chart["layer"][0]["encoding"]["y"]["title"] == label
+    assert chart["layer"][0]["encoding"]["tooltip"][1]["title"] == label
+    assert len(chart["data"]["values"]) == 100
+    assert chart["data"]["values"][max(25, periods)]["factor_value"] is None
+    if periods == 20:
+        assert history.segment.iloc[24] != history.segment.iloc[46]
+    for display in (build_factor_chart, history_factor_table):
+        with pytest.raises(ValueError, match="不一致"):
+            display(history, Momentum20Factor.definition)
+    assert any("252" in w and "假设" in w for w in result.warnings)
+    assert any("低波动" in w and "安全" in w for w in result.warnings)
+    assert any("未复权" in w and "波动" in w for w in result.warnings)
+    assert {p.name: p.read_bytes() for p in saved.directory.iterdir()} == before
+
+
+def test_page_switches_between_momentum_and_volatility_without_stale_semantics(saved_factory):
+    _, make = saved_factory
+    saved, _, _ = make(length=100, oscillating=True)
+    page = calculate(new_page(), saved.set_id)
+    assert page.selectbox(key="factor_name").value == "momentum_20"
+    assert "20 期年化波动率" in page.selectbox(key="factor_name").options
+    for periods in (20, 60):
+        page.selectbox(key="factor_name").set_value(f"volatility_{periods}").run()
+        assert not page.exception
+        assert page.session_state.filtered_state.get("factor_result") is None
+        assert not page.dataframe and not page.get("vega_lite_chart")
+        assert "波动率" in page.button(key="factor_calculate").label
+        calculate(page, saved.set_id)
+        label = f"{periods} 期年化波动率"
+        assert label in page.dataframe[0].value.columns
+        assert page.dataframe[0].value[label].iloc[0] == "0.00%"
+        assert len(page.get("vega_lite_chart")) == 1  # 真正的 0% 仍要有曲线。
+        assert any(label in s.value for s in page.subheader)
+        text = "\n".join(i.value for i in list(page.caption) + list(page.markdown) + list(page.warning))
+        assert "涨幅更高" not in text and "期价格动量 =" not in text
+        assert "252" in text and "假设" in text and "样本标准差" in text
+        assert any("ddof=1" in c.value and "sqrt(252)" in c.value for c in page.code)
+        assert any("波动" in w.value and "低波动" in w.value for w in page.warning)
+    page.selectbox(key="factor_name").set_value("momentum_20").run()
+    assert page.session_state.filtered_state.get("factor_result") is None
+    calculate(page, saved.set_id)
+    assert "20 期动量" in page.dataframe[0].value.columns
+    assert any("涨幅更高" in m.value for m in page.markdown)
+    assert not any("低波动" in w.value for w in page.warning)
+
+
+@pytest.mark.parametrize("periods", [20, 60])
+def test_volatility_page_short_history_has_no_zero_or_chart(saved_factory, periods):
+    _, make = saved_factory
+    saved, _, _ = make(length=10)
+    page = new_page()
+    assert f"{periods} 期年化波动率" in page.selectbox(key="factor_name").options
+    page.selectbox(key="factor_name").set_value(f"volatility_{periods}").run()
+    calculate(page, saved.set_id)
+    assert page.dataframe[0].value[f"{periods} 期年化波动率"].eq("—").all()
     assert not page.get("vega_lite_chart")
     assert any("没有可用" in info.value for info in page.info)
 

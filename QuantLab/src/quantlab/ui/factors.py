@@ -15,6 +15,20 @@ STATUS_LABELS = {
 }
 
 
+def factor_label(definition: FactorDefinition) -> str:
+    """使用定义中的名称，保留原动量表格的简写。"""
+    return definition.description.replace("价格动量", "动量")
+
+
+def factor_explanation(definition: FactorDefinition) -> str:
+    """说明数值的方向，不把历史波动解释成涨幅或交易优劣。"""
+    if definition.direction == "higher_is_more_volatile":
+        return "数值越大表示历史收益率波动越大；低波动不保证安全，也不代表收益更高。"
+    if definition.direction == "higher_is_stronger":
+        return "数值越大只表示过去涨幅更高。"
+    return "数值含义请核对完整因子定义。"
+
+
 def _display_table(data: pd.DataFrame, definition: FactorDefinition) -> pd.DataFrame:
     """只格式化显示副本；NaN 显示为破折号，不能冒充 0%。"""
     periods = definition.lookback_periods
@@ -22,13 +36,13 @@ def _display_table(data: pd.DataFrame, definition: FactorDefinition) -> pd.DataF
     return pd.DataFrame({
         "日期": data.date.dt.date,
         "ETF 代码": data.symbol,
-        f"{periods} 期动量": data.factor_value.map(lambda value: "—" if pd.isna(value) else f"{value:.2%}"),
+        factor_label(definition): data.factor_value.map(lambda value: "—" if pd.isna(value) else f"{value:.2%}"),
         "状态 / 原因": data.status.map(labels),
     }).reset_index(drop=True)
 
 
 def daily_factor_table(result: FactorRunResult, selected_date: date) -> pd.DataFrame:
-    """只取指定日期的全部 ETF，不查找各自最近一次有效值或按动量排名。"""
+    """只取指定日期的全部 ETF，不查找各自最近一次有效值或排名。"""
     if selected_date not in result.calendar.dates:
         raise ValueError("查看日期不在研究日期轴内")
     rows = result.data.loc[result.data.date.dt.date.eq(selected_date)]
@@ -70,7 +84,7 @@ def build_factor_chart(
     history: pd.DataFrame, definition: FactorDefinition | None = None,
 ) -> alt.LayerChart:
     """真实日期横轴、百分比纵轴；分组连线且保留单点区间。"""
-    label = f"{_history_definition(history, definition).lookback_periods} 期动量"
+    label = factor_label(_history_definition(history, definition))
     rows = [
         {"date": row.date.isoformat(),
          "factor_value": float(row.factor_value) if row.is_valid else None,
