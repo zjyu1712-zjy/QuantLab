@@ -9,17 +9,9 @@ import pandas as pd
 
 from quantlab.data.calendar import CalendarAxis
 from quantlab.factors import FactorDefinition, FactorRunResult
-from quantlab.portfolio.types import PortfolioBacktestError, PortfolioConfig, RebalanceSchedule
-
-
-DECISION_DTYPES = {
-    "decision_id": "string", "signal_date": "datetime64[ns]", "execution_date": "datetime64[ns]",
-    "valid_count": "int64", "top_n": "int64", "status": "string", "reason": "string", "cutoff_tie": "bool",
-}
-TARGET_DTYPES = {
-    "decision_id": "string", "signal_date": "datetime64[ns]", "symbol": "string",
-    "factor_value": "float64", "target_weight": "float64",
-}
+from quantlab.portfolio.types import (
+    DECISION_DTYPES, TARGET_DTYPES, PortfolioBacktestError, PortfolioConfig, RebalanceSchedule,
+)
 FACTOR_COLUMNS = ["date", "symbol", "factor_value", "is_valid", "status"]
 
 

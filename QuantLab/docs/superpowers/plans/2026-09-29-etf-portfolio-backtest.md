@@ -13,9 +13,10 @@
 **Spec:** `docs/superpowers/specs/2026-09-29-etf-portfolio-backtest-design.md`
 （2026-09-29 用户已批准；执行者必须完整阅读设计和本计划）。
 
-**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–2 已完成，Task 3–6 未实施。
+**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–3 已完成，Task 4–6 未实施。
 Task 1 验收：相关测试 181 项通过；全项目 1014 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 2 验收：费用与预算测试 110 项通过；全项目 1124 项通过、2 项外部接口测试跳过；依赖无冲突。
+Task 3 验收：引擎测试 55 项通过；引擎、预算与筛选相关测试 289 项通过；全项目 1179 项通过、2 项外部接口测试跳过；依赖无冲突。
 
 ## Global Constraints
 
@@ -211,7 +212,8 @@ def test_slippage_and_each_side_cost():
 **学习目标：** 每一笔交易如何改变现金/份额，如何得到资金曲线。
 
 **Files:** Create `src/quantlab/portfolio/engine.py`、`tests/test_portfolio_engine.py`；
-Modify `src/quantlab/portfolio/types.py`、`docs/portfolio_backtest.md`。
+Modify `src/quantlab/portfolio/types.py`、`docs/portfolio_backtest.md`；
+`selection.py` 仅改为导入集中到 types.py 的决策/目标列定义，不改筛选行为。
 
 **Interfaces:**
 
@@ -225,7 +227,8 @@ Modify `src/quantlab/portfolio/types.py`、`docs/portfolio_backtest.md`。
 
 在 types.py 固定列常量和空表类型：日期为无时区 datetime64[ns]；代码和
 ID/状态为字符串；数量 int64；金额/权重 float64；布尔列不含空值。
-超出可表示数量范围时失败，不溢出到负数。键排序均固定为日期、代码。
+超出可表示数量范围时失败，不溢出到负数。持仓/目标按日期、代码排序；
+订单/成交按日期、先卖后买、同方向内代码排序，保留实际现金变动顺序。
 
 - orders：`order_id,decision_id,symbol,signal_date,execution_date,side,
   requested_quantity,filled_quantity,unfilled_quantity,status,reason,trade_id`。
@@ -238,7 +241,7 @@ ID/状态为字符串；数量 int64；金额/权重 float64；布尔列不含�
   cumulative_fees_taxes,cumulative_slippage`。
 - 订单 ID `PO000001`、成交 ID `PT000001`；拒单 trade_id 空值。
 
-- [ ] **Step 1：写手算账本与失败测试。** 只在引擎单测构造内部安排：
+- [x] **Step 1：写手算账本与失败测试。** 只在引擎单测构造内部安排：
   D0 收盘选 A/B，D1 开盘执行；D1 收盘选 B/C，D2 开盘执行；N=2，
   初始 1000，手数 10，费用税滑点全 0。A/B/C 对应 510300/159915/512000。
   D0 开盘/收盘 10/20/5；D1 开盘 10/20/5、收盘 11/18/5；D2 开盘和收盘
@@ -277,21 +280,21 @@ def test_cash_and_holdings_match_manual_ledger(manual_case):
 - `test_partial_ohlcv_row_rejected`、`test_extreme_sell_fee_fails`（卖出净收入
   负）、`test_overflow_fails_without_mutation`；核对中文错误、日期、代码与原因。
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。** 初始 52 项均因引擎模块缺失失败；夹具构造成功。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_engine.py -q`
   Expected: 新引擎缺失；夹具应可经原对齐接口合法构造。
-- [ ] **Step 3：实现逐日引擎。** 规范副本索引后验证完整日期网格和内部安排，
+- [x] **Step 3：实现逐日引擎。** 规范副本索引后验证完整日期网格和内部安排，
   拒绝重复目标、非恰好 N 个等权目标、执行日非紧邻信号日及区间外日期。
   每天在状态副本中：执行前日目标→先卖→同时分配买入预算→买→校验
   实际成交资产 volume→收盘估值→现金/份额/有限性检查→接受该日。
   严格区分跳过与空目标，期末不强平；对零数量不乘缺失价格。
   校验最后日缺失和失败时输入不变，失败不返回部分 result。
-- [ ] **Step 4：运行绿灯和记账不变量。**
+- [x] **Step 4：运行绿灯和记账不变量。** 引擎 55 项、预算 110 项通过；连同筛选共 289 项通过。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_engine.py tests/test_portfolio_execution.py -q`
   Expected: 全部通过；逐日 equity=cash+市值，权重和现金占比之和为 1，
   全部数量为非负整手，费用/滑点分开对账，非计划日不成交。
-- [ ] **Step 5：更新三日账本说明。** 展示现金、各资产份额与总资产的对应关系。
-- [ ] **Step 6：核对差异后提交。** 建议消息 `feat: simulate multi-ETF portfolio accounting`。
+- [x] **Step 5：更新三日账本说明。** 展示现金、各资产份额与总资产的对应关系；明确总资产耗尽时停止报错，未定义零资产权重。
+- [x] **Step 6：核对差异后提交。** 消息 `feat: simulate multi-ETF portfolio accounting`；仅引擎、集中类型定义、筛选导入、测试和相关文档，不纳入既有改动。
 
 ## Task 4：研究快照接入与运行身份
 

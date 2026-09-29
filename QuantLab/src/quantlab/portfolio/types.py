@@ -1,4 +1,4 @@
-"""组合研究的配置与数值目标类型；当前不包含成交或资产曲线。"""
+"""组合研究的配置、内部结果与规范表结构。"""
 
 from __future__ import annotations
 
@@ -72,3 +72,48 @@ class RebalanceSchedule:
     decisions: pd.DataFrame
     targets: pd.DataFrame
     ascending: bool
+
+
+DECISION_DTYPES = {
+    "decision_id": "string", "signal_date": "datetime64[ns]", "execution_date": "datetime64[ns]",
+    "valid_count": "int64", "top_n": "int64", "status": "string", "reason": "string", "cutoff_tie": "bool",
+}
+TARGET_DTYPES = {
+    "decision_id": "string", "signal_date": "datetime64[ns]", "symbol": "string",
+    "factor_value": "float64", "target_weight": "float64",
+}
+ORDER_DTYPES = {
+    "order_id": "string", "decision_id": "string", "symbol": "string", "signal_date": "datetime64[ns]",
+    "execution_date": "datetime64[ns]", "side": "string", "requested_quantity": "int64",
+    "filled_quantity": "int64", "unfilled_quantity": "int64", "status": "string", "reason": "string", "trade_id": "string",
+}
+TRADE_DTYPES = {
+    "trade_id": "string", "order_id": "string", "decision_id": "string", "symbol": "string",
+    "signal_date": "datetime64[ns]", "execution_date": "datetime64[ns]", "side": "string",
+    "quantity": "int64", "open_price": "float64", "execution_price": "float64", "notional": "float64",
+    "commission": "float64", "tax": "float64", "slippage_cost": "float64", "cash_after": "float64", "position_after": "int64",
+}
+POSITION_DTYPES = {
+    "date": "datetime64[ns]", "symbol": "string", "quantity": "int64", "close": "float64",
+    "position_value": "float64", "weight": "float64",
+}
+EQUITY_DTYPES = {
+    "date": "datetime64[ns]", "cash": "float64", "position_value": "float64", "equity": "float64",
+    "net_value": "float64", "cumulative_return": "float64", "cumulative_fees_taxes": "float64",
+    "cumulative_slippage": "float64",
+}
+
+
+@dataclass(frozen=True)
+class PortfolioBacktestResult:
+    """内部引擎结果；公开研究入口仍需附加身份及独立输入快照。"""
+
+    decisions: pd.DataFrame
+    targets: pd.DataFrame
+    orders: pd.DataFrame
+    trades: pd.DataFrame
+    positions: pd.DataFrame
+    equity_curve: pd.DataFrame
+    metadata: dict | None = None
+    input_data: pd.DataFrame | None = None
+    factor_data: pd.DataFrame | None = None
