@@ -117,3 +117,26 @@ class PortfolioBacktestResult:
     metadata: dict | None = None
     input_data: pd.DataFrame | None = None
     factor_data: pd.DataFrame | None = None
+
+
+@dataclass(frozen=True)
+class PortfolioPerformance:
+    """组合指标；None 必须有明确原因，不表示零收益或失败回测。"""
+
+    daily_returns: pd.Series
+    net_value: pd.Series
+    drawdown: pd.Series
+    cumulative_return: float | None
+    annualized_return: float | None
+    annualized_volatility: float | None
+    max_drawdown: float
+    sharpe_ratio: float | None
+    unavailable_reasons: dict[str, str]
+
+
+@dataclass(frozen=True)
+class PortfolioAnalysis:
+    """独立的回测副本及基于完整资产曲线的分析，不修改原运行身份。"""
+
+    backtest: PortfolioBacktestResult
+    performance: PortfolioPerformance

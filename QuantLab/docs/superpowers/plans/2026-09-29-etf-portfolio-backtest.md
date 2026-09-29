@@ -13,11 +13,12 @@
 **Spec:** `docs/superpowers/specs/2026-09-29-etf-portfolio-backtest-design.md`
 （2026-09-29 用户已批准；执行者必须完整阅读设计和本计划）。
 
-**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–4 已完成，Task 5–6 未实施。
+**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–5 已完成，Task 6 未实施。
 Task 1 验收：相关测试 181 项通过；全项目 1014 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 2 验收：费用与预算测试 110 项通过；全项目 1124 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 3 验收：引擎测试 55 项通过；引擎、预算与筛选相关测试 289 项通过；全项目 1179 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 4 验收：公开研究入口测试 45 项通过；连同因子及单 ETF 追溯共 88 项通过；全项目 1224 项通过、2 项外部接口测试跳过；依赖无冲突。
+Task 5 验收：组合分析测试 67 项通过；连同原绩效/单 ETF 分析共 71 项通过；全项目 1291 项通过、2 项外部接口测试跳过；依赖无冲突。
 
 ## Global Constraints
 
@@ -366,6 +367,7 @@ def test_real_factor_runs_only_at_next_open(make_portfolio_preview):
 
 **Files:** Create `src/quantlab/portfolio/analysis.py`、`tests/test_portfolio_analysis.py`；
 Modify `types.py`、`__init__.py`（同一 portfolio 目录）、`docs/portfolio_backtest.md`。
+另将 `research.py` 的一条阶段性说明改为通用年化假设，避免分析结果仍声称“尚未计算绩效”；不改研究行为。
 
 **Interfaces:**
 
@@ -378,7 +380,7 @@ Modify `types.py`、`__init__.py`（同一 portfolio 目录）、`docs/portfolio
 - 输入必须是 Task 4 完整结果；返回独立 backtest 副本，metadata.analytics_config
   记录实际参数。原结果不得被分析过程修改，第一阶段 `analyze_performance` 不改。
 
-- [ ] **Step 1：写失败测试。** 使用 Task 4 短历史全现金结果：
+- [x] **Step 1：写失败测试。** 使用 Task 4 短历史全现金结果：
 
 ```python
 def test_cash_path_is_valid_but_sharpe_is_undefined(make_portfolio_preview):
@@ -403,18 +405,18 @@ def test_cash_path_is_valid_but_sharpe_is_undefined(make_portfolio_preview):
 非法年化参数；日收益率标准差 <=1e-15 夏普未定义。合法极端数据若算得
 非有限指标，应明确数值错误，不转换成“样本不足”。
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。** 63 项新行为因入口缺失失败，1 项原统一入口兼容测试通过。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_analysis.py -q`
   Expected: 新分析入口缺失。
-- [ ] **Step 3：实现适配层和结果类型。** 按原始完整日期轴验证总资产，
+- [x] **Step 3：实现适配层和结果类型。** 按原始完整日期轴验证总资产，
   逐项调用 `analytics.returns` / `analytics.risk`，预先区分样本数量和
   夏普阈值；不复制公式，不用 broad except 填 None。单观测 daily_returns
   为空浮点序列；仍调用已有净值/回撤函数。记录不可计算原因并复制 metadata。
-- [ ] **Step 4：运行绿灯与旧指标回归。**
+- [x] **Step 4：运行绿灯与旧指标回归。** 71 项通过；新增的 3 项损坏结果边界亦先红后绿。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_analysis.py tests/test_performance.py tests/test_backtest_analysis.py -q`
   Expected: 全部通过，旧统一入口仍按原规则报未定义指标错误。
-- [ ] **Step 5：更新指标解释。** 给出全现金和单观测的未定义指标示例。
-- [ ] **Step 6：核对差异后提交。** 建议消息 `feat: analyze complete portfolio equity curves`。
+- [x] **Step 5：更新指标解释。** 给出全现金和单观测的未定义指标示例，以及首次费用和全部热身的手算对照。
+- [x] **Step 6：核对差异后提交。** 消息 `feat: analyze complete portfolio equity curves`；仅本任务七个文件，不混入既有修改。
 
 ## Task 6：端到端、时序隔离与交付验收
 
