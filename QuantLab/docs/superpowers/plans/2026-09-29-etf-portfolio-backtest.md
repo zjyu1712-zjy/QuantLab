@@ -13,10 +13,11 @@
 **Spec:** `docs/superpowers/specs/2026-09-29-etf-portfolio-backtest-design.md`
 （2026-09-29 用户已批准；执行者必须完整阅读设计和本计划）。
 
-**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–3 已完成，Task 4–6 未实施。
+**Status:** 用户已确认本计划并选择当前会话逐步实施；Task 1–4 已完成，Task 5–6 未实施。
 Task 1 验收：相关测试 181 项通过；全项目 1014 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 2 验收：费用与预算测试 110 项通过；全项目 1124 项通过、2 项外部接口测试跳过；依赖无冲突。
 Task 3 验收：引擎测试 55 项通过；引擎、预算与筛选相关测试 289 项通过；全项目 1179 项通过、2 项外部接口测试跳过；依赖无冲突。
+Task 4 验收：公开研究入口测试 45 项通过；连同因子及单 ETF 追溯共 88 项通过；全项目 1224 项通过、2 项外部接口测试跳过；依赖无冲突。
 
 ## Global Constraints
 
@@ -315,7 +316,7 @@ version="1"、完整 config、resolved_ascending 和 L/K 锚点）、`factor_def
 日期轴全部声明和 ISO 日期）、`warnings`；初始 `analytics_config=None`。
 行情快照包含 has_observation；公式与输入身份各自保留，不伪造历史可得性。
 
-- [ ] **Step 1：写真实链路失败测试。**
+- [x] **Step 1：写真实链路失败测试。** 覆盖五个内置因子、身份校验、输出隔离与独立子进程的源码变动保护。
 
 ```python
 def test_real_factor_runs_only_at_next_open(make_portfolio_preview):
@@ -343,21 +344,21 @@ def test_real_factor_runs_only_at_next_open(make_portfolio_preview):
 改复制的 portfolio 源码并仅 reload provenance，第二次运行须提示重新启动。
 只修改隔离副本，禁止改当前源码或修改全局环境来绕过校验。
 
-- [ ] **Step 2：运行红灯。**
+- [x] **Step 2：运行红灯。** 43 项均因公开入口缺失失败，真实夹具构造成功。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_research.py -q`
   Expected: 公开入口缺失；不是因夹具默认 volume=0 而失败。
-- [ ] **Step 3：实现唯一公开入口。** 深拷贝输入，用 `run_research_factor`
+- [x] **Step 3：实现唯一公开入口。** 深拷贝输入，用 `run_research_factor`
   内置工厂完成完整预览验证；对自己的行情副本清理行索引名并重置标签，
   不能重算身份以修复损坏输入。调用 schedule→simulate，最后装配独立结果。
   复用 `backtest.provenance.create_metadata` 仅取得运行 ID/时间、环境、
   受加载基线校验的源码身份；其余单 ETF schema/data/strategy 字段不照搬。
   行情和因子指纹用该模块的 `dataframe_sha256`；不访问私有基线变量。
   即使已选择的快照来源文件不存在也应运行；异常加上下文但不能吞掉失败。
-- [ ] **Step 4：运行绿灯。**
+- [x] **Step 4：运行绿灯。** 88 项通过；新增 2 项既有数值配置/冻结配置重验的兼容测试。
   Run: `PYTHONPATH=src .venv/bin/python -m pytest tests/test_portfolio_research.py tests/test_factor_research.py tests/test_backtest_provenance.py -q`
   Expected: 全部通过，旧追溯与因子契约未改变。
-- [ ] **Step 5：更新公开调用与追溯说明。** 区分内容指纹、版本声明与真实历史可得性。
-- [ ] **Step 6：核对差异后提交。** 建议消息 `feat: connect portfolio backtests to research snapshots`。
+- [x] **Step 5：更新公开调用与追溯说明。** 区分内容指纹、版本声明与真实历史可得性。
+- [x] **Step 6：核对差异后提交。** 消息 `feat: connect portfolio backtests to research snapshots`；仅本任务五个文件，不混入既有工作。
 
 ## Task 5：完整资金曲线的绩效分析
 
