@@ -21,6 +21,7 @@ from quantlab.config.settings import (
     BacktestConfig,
 )
 from quantlab.data.validator import validate_market_data
+from quantlab.backtest.provenance import create_metadata, snapshot_input
 
 
 def run_buy_and_hold(
@@ -28,6 +29,8 @@ def run_buy_and_hold(
     *,
     backtest_config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
     analytics_config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> BacktestAnalysis:
     """首日开盘全仓买入，并持有至区间结束。"""
     validate_market_data(market_data)
@@ -40,6 +43,11 @@ def run_buy_and_hold(
     data = data.sort_values("date").reset_index(drop=True)
     first_row = data.iloc[0]
     symbol = str(first_row["symbol"])
+    input_data = snapshot_input(data.drop(columns=["signal"], errors="ignore"))
+    metadata = create_metadata(
+        input_data, backtest_config, strategy_name="buy_and_hold",
+        execution_rule="first_day_open", data_source=data_source, data_version=data_version,
+    )
 
     execution_price = float(first_row["open"]) * (
         1 + backtest_config.slippage_rate
@@ -133,6 +141,8 @@ def run_buy_and_hold(
             equity_records,
             columns=BACKTEST_EQUITY_COLUMNS,
         ),
+        metadata=metadata,
+        input_data=input_data,
     )
     return analyze_backtest_result(
         backtest,

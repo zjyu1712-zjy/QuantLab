@@ -62,7 +62,9 @@ def _factor_warnings(
     messages.extend([
         f"{periods} 期按研究日期轴位置计算，不代表 {periods} 个自然日；并集可能漏掉全体缺失日。",
         f"前 {periods} 个日期位置为热身期；窗口内任一缺失都留空，不自动读取区间外历史。",
-        "因子含当日收盘价，只能在收盘数据可用后计算，不是交易指令。",
+        ("因子含当日完整成交量，只能在收盘数据可用后计算，不是交易指令。"
+         if definition.direction == "higher_is_more_volume"
+         else "因子含当日收盘价，只能在收盘数据可用后计算，不是交易指令。"),
         "未使用未来行不等于输入在历史当时可得；本结果是固定数据版本上的回顾性研究。",
         "同一复权标签不保证来源算法相同；口径声明不等于认证，未在此进行复权转换。",
     ])
@@ -74,6 +76,36 @@ def _factor_warnings(
         ])
         if preview.adjustment == "none":
             messages.append("未复权价格的分红、拆并份额跳变可能影响波动率；当前并非总回报收益率的波动。")
+    elif definition.direction == "higher_is_more_above_ma":
+        messages.extend([
+            f"均线使用含当前期的 {definition.window_observations} 条收盘价简单均值；正值在均线上方，负值在下方，零表示相等。",
+            "均线偏离不是区间收益率；数值更高不代表投资更好，也不预示后续上涨或均值回归。",
+        ])
+        if preview.adjustment == "none":
+            messages.append("未复权价格的分红、拆并份额跳变可能影响均线偏离；不能据此直接判断趋势变化。")
+    elif definition.direction == "higher_is_less_drawdown":
+        messages.extend([
+            f"仅在含当前期的 {definition.window_observations} 条收盘价窗口内重新累计峰值，取最深回落；不沿用窗口外高点。",
+            "价格最大回撤为零或负数，越接近 0 表示该窗口内回撤越浅；不保证未来安全或收益。",
+            "这是单只 ETF 的滚动价格回撤，不是当前回撤，也不是组合全区间的绩效最大回撤；窗口内反弹不会抹去此前跌幅。",
+        ])
+        if preview.adjustment == "none":
+            messages.append("未复权价格的分红、拆并份额跳变可能影响价格最大回撤；不是总回报回撤。")
+    elif definition.direction == "higher_is_more_volume":
+        messages.extend([
+            "当日成交量除以此前 20 期平均成交量再减 1；分母不包含当日，正值为放量、负值为缩量。",
+            "历史均量为 0 时分母为 0，不可计算；历史均量大于 0 且当日真实零量时，-100% 是有效结果。",
+            "数值越大仅表示相对自身历史更放量，不是资金净流入、绝对流动性或未来收益预测。",
+            "同一 ETF 的成交量单位需在窗口内保持一致；固定倍数会抵消，但单位中途改变或来源口径变化会污染比值，本模块不转换或认证单位。",
+        ])
+    elif definition.direction == "higher_is_more_upward_efficient":
+        messages.extend([
+            "使用 21 条收盘价的首尾净变化 / 20 次逐期价格变化绝对值之和，衡量带方向的价格路径效率。",
+            "数值在 -1 到 1 之间：接近 1 表示向上更连贯，接近 -1 表示向下更连贯；首尾相等为 0，恒价窗口按定义记为 0。",
+            "趋势效率不是收益率、胜率或 ADX，不使用绝对值排名；小幅单向上涨也可为 1，不预测未来走势。",
+        ])
+        if preview.adjustment == "none":
+            messages.append("未复权价格的分红、拆并份额跳变可能扭曲趋势效率；不是总回报价格路径。")
     elif preview.adjustment == "none":
         messages.append("未复权价格可能受分红、拆并份额影响，价格动量不能当作总回报。")
     if not has_valid:

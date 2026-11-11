@@ -4,14 +4,14 @@
 
 “添加资产数据”页面提供三种入口：
 
-1. 自动获取行情（推荐）：输入 ETF 代码和日期后，通过 AkShare 获取行情；
+1. 自动获取行情：输入 ETF 代码和日期后，通过配置的数据源获取行情；
 2. 上传历史行情文件：系统自动识别常见中英文字段和日期格式；
 3. 下载 QuantLab 行情模板：适合暂时无法自动识别的文件。
 
 当前支持 QuantLab、东方财富、同花顺、通达信和 Yahoo Finance 的常见
-历史行情文件。自动获取当前使用 AkShare 的 ETF 日线接口。雪球文件、
-JoinQuant 聚宽和 Baostock 格式只预留后续扩展，
-Wind、Choice 和 iFinD 不在当前个人投资者产品范围内。
+历史行情文件。自动获取支持 AkShare 和已配置凭证的 iFinD QuantAPI，
+二者均只用于当前的沪深 ETF 日线。雪球文件、JoinQuant 聚宽、Baostock、
+Wind 和 Choice 尚未接入。
 
 用户只需在页面选择资产、上传文件并确认预览。字段识别、自动检查和内部
 格式转换由系统完成；技术细节收纳在页面的“高级信息”中。
@@ -41,7 +41,7 @@ Wind、Choice 和 iFinD 不在当前个人投资者产品范围内。
 自动获取的数据目录为：
 
 ```text
-data/raw/market/akshare/<version_id>/
+data/raw/market/<provider>/<version_id>/
 data/processed/market/<symbol>/<version_id>.parquet
 ```
 

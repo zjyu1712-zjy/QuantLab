@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from quantlab.data.providers import (
+    MarketDataProviderAuthenticationError,
     MarketDataProviderNoDataError,
     MarketDataProviderResponseError,
 )
@@ -92,6 +93,17 @@ def test_friendly_market_error_keeps_response_error_as_service_failure() -> None
         "行情服务暂时无法连接，请稍后重试，或者使用文件上传方式导入数据。"
     )
     assert detail == "未找到必需的响应字段"
+
+
+def test_friendly_market_error_prompts_access_token_reconfiguration() -> None:
+    message, detail = friendly_market_error(
+        MarketDataProviderAuthenticationError(
+            "iFinD access token 已失效，请重新配置。"
+        )
+    )
+
+    assert message == "iFinD access token 已失效，请重新配置后重试。"
+    assert detail == "iFinD access token 已失效，请重新配置。"
 
 
 def test_friendly_market_error_explains_invalid_etf_symbol() -> None:

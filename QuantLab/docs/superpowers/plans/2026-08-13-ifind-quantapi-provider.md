@@ -826,7 +826,7 @@ Add an `iFinD QuantAPI` section to `README.md` containing:
 3. The normal local start command:
 
    ```bash
-   cd /Users/zhoujiayu/Documents/量化/QuantLab
+   cd <project-root>/QuantLab
    source .venv/bin/activate
    PYTHONPATH=src streamlit run app.py
    ```

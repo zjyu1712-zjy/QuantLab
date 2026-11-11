@@ -7,6 +7,7 @@ from quantlab.config.settings import (
     BacktestConfig,
 )
 from quantlab.data.validator import validate_market_data
+from quantlab.backtest.provenance import BacktestMetadata, create_metadata, snapshot_input
 
 
 BACKTEST_TRADE_COLUMNS = [
@@ -56,6 +57,8 @@ class BacktestResult:
     orders: pd.DataFrame
     trades: pd.DataFrame
     equity_curve: pd.DataFrame
+    metadata: BacktestMetadata | None = None
+    input_data: pd.DataFrame | None = None
 
 
 def _calculate_commission(
@@ -89,6 +92,11 @@ def _calculate_buy_quantity(
 def run_backtest(
     signal_data: pd.DataFrame,
     config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
+    *,
+    strategy_name: str = "external_signals",
+    strategy_parameters: dict | None = None,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> BacktestResult:
     """按下一交易日开盘价执行单 ETF、只做多的全仓回测。"""
     validate_market_data(signal_data)
@@ -111,6 +119,12 @@ def run_backtest(
     data["date"] = pd.to_datetime(data["date"], errors="raise")
     data = data.sort_values("date").reset_index(drop=True)
     symbol = str(data.iloc[0]["symbol"])
+    input_data = snapshot_input(data)
+    metadata = create_metadata(
+        input_data, config, strategy_name=strategy_name,
+        strategy_parameters=strategy_parameters,
+        data_source=data_source, data_version=data_version,
+    )
 
     cash = float(config.initial_cash)
     quantity = 0
@@ -283,4 +297,6 @@ def run_backtest(
             equity_records,
             columns=BACKTEST_EQUITY_COLUMNS,
         ),
+        metadata=metadata,
+        input_data=input_data,
     )

@@ -20,6 +20,7 @@ from quantlab.ui import (  # noqa: E402
     load_market_dataset,
     require_access,
 )
+from quantlab.ui.run_records import render_run_record  # noqa: E402
 
 
 RAW_MARKET_DIR, PROCESSED_MARKET_DIR = get_market_storage_dirs(PROJECT_ROOT)
@@ -35,8 +36,7 @@ def _load_cached_market_dataset(
     return load_market_dataset(processed_path)
 
 
-@st.cache_data(show_spinner=False)
-def _run_cached_backtest(
+def _run_backtest(
     market_data: pd.DataFrame,
     short_window: int,
     long_window: int,
@@ -47,8 +47,10 @@ def _run_cached_backtest(
     sell_tax_rate: float,
     lot_size: int,
     annual_risk_free_rate: float,
+    data_source: str,
+    data_version: str,
 ):
-    """参数和行情未变化时复用回测结果。"""
+    """每次主动运行生成新的实验身份，避免复用旧运行时间和代码版本。"""
     return build_moving_average_backtest_view(
         market_data,
         short_window=short_window,
@@ -60,6 +62,8 @@ def _run_cached_backtest(
         sell_tax_rate=sell_tax_rate,
         lot_size=lot_size,
         annual_risk_free_rate=annual_risk_free_rate,
+        data_source=data_source,
+        data_version=data_version,
     )
 
 
@@ -288,7 +292,7 @@ def render_backtest_page() -> None:
 
     try:
         with st.spinner("正在生成信号并模拟成交……"):
-            view = _run_cached_backtest(
+            view = _run_backtest(
                 market_data,
                 int(short_window),
                 int(long_window),
@@ -299,6 +303,8 @@ def render_backtest_page() -> None:
                 float(sell_tax_percent) / 100,
                 int(lot_size),
                 float(risk_free_rate_percent) / 100,
+                record.processed_path,
+                record.version_id,
             )
     except Exception as error:
         st.error(f"回测无法完成：{error}")
@@ -309,9 +315,10 @@ def render_backtest_page() -> None:
         return
 
     st.caption(f"ETF {view.symbol} · {observation_count} 个交易日")
-    with st.expander("高级信息：本次实验数据"):
-        st.write(f"数据版本：{record.version_id}")
-        st.write(f"内部文件：{record.processed_path}")
+    render_run_record(
+        view.result.backtest, view.result.performance,
+        RAW_MARKET_DIR.parent.parent / "backtests",
+    )
 
     st.subheader("回测结果")
     metrics = st.columns(6)

@@ -71,7 +71,7 @@ the completed process plus the fake executable's newline-delimited argv log.
 Run:
 
 ```bash
-cd /Users/zhoujiayu/Documents/量化/QuantLab
+cd <project-root>/QuantLab
 PYTHONPATH=src .venv/bin/python -m pytest tests/test_ifind_keychain_scripts.py -v
 ```
 
@@ -324,7 +324,7 @@ git commit -m "docs: explain secure iFinD startup"
 Ask the user to run:
 
 ```bash
-cd "/Users/zhoujiayu/Documents/量化/QuantLab"
+cd "<project-root>/QuantLab"
 ./configure_ifind_mac.command
 ./run_ifind_mac.command
 ```

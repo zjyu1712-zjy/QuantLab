@@ -52,6 +52,48 @@ class FalseyTransport(FakeTransport):
         return False
 
 
+def test_client_uses_direct_access_token_without_exchange() -> None:
+    """Catches direct-token mode accidentally calling the token exchange endpoint."""
+    transport = FakeTransport(
+        [FakeResponse(200, {"errorcode": 0, "tables": []})]
+    )
+    client = IFindQuantAPIClient(
+        access_token="direct-access-secret",
+        transport=transport,
+        sleep=lambda _: None,
+    )
+
+    result = client.post_json(
+        "/api/v1/cmd_history_quotation", {"codes": "510300.SH"}
+    )
+
+    assert result == {"errorcode": 0, "tables": []}
+    assert len(transport.calls) == 1
+    assert transport.calls[0]["url"].endswith("/api/v1/cmd_history_quotation")
+    assert transport.calls[0]["headers"]["access_token"] == "direct-access-secret"
+    assert "refresh_token" not in transport.calls[0]["headers"]
+
+
+def test_rejected_direct_access_token_does_not_exchange_or_retry() -> None:
+    """Catches a rejected direct token falling back to refresh-token exchange."""
+    transport = FakeTransport([FakeResponse(401, {})])
+    client = IFindQuantAPIClient(
+        access_token="direct-access-secret",
+        transport=transport,
+        sleep=lambda _: None,
+    )
+
+    with pytest.raises(
+        MarketDataProviderAuthenticationError,
+        match="access token 已失效",
+    ) as captured:
+        client.post_json("/api/v1/cmd_history_quotation", {})
+
+    assert len(transport.calls) == 1
+    assert transport.calls[0]["url"].endswith("/api/v1/cmd_history_quotation")
+    assert "direct-access-secret" not in str(captured.value)
+
+
 def test_client_exchanges_and_reuses_access_token() -> None:
     """Catches a client that exchanges a refresh token for every request."""
     now = datetime(2026, 8, 13, tzinfo=UTC)

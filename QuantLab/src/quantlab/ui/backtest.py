@@ -39,6 +39,8 @@ def build_moving_average_backtest_view(
     lot_size: int,
     annual_risk_free_rate: float = 0.0,
     periods_per_year: int = 252,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> MovingAverageBacktestView:
     """运行双均线回测并整理页面需要的数据。"""
     backtest_config = BacktestConfig(
@@ -59,6 +61,8 @@ def build_moving_average_backtest_view(
         long_window,
         backtest_config=backtest_config,
         analytics_config=analytics_config,
+        data_source=data_source,
+        data_version=data_version,
     )
 
     equity = result.backtest.equity_curve.loc[

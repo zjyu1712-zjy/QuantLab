@@ -10,6 +10,7 @@ import quantlab.data.providers as providers_module
 from quantlab.data.providers import get_market_data_provider
 from quantlab.data.providers.akshare import AkShareETFProvider
 from quantlab.data.providers.base import (
+    MarketDataProviderAuthenticationError,
     MarketDataProviderTimeout,
     MarketDataProviderUnavailable,
 )
@@ -28,10 +29,19 @@ def test_auto_with_token_selects_ifind() -> None:
     assert isinstance(provider, IFindETFProvider)
 
 
+def test_auto_with_access_token_selects_ifind() -> None:
+    provider = get_market_data_provider(
+        env={"IFIND_ACCESS_TOKEN": "test-access-token"},
+    )
+
+    assert isinstance(provider, IFindETFProvider)
+
+
 def test_explicit_akshare_ignores_ifind_token() -> None:
     provider = get_market_data_provider(
         env={
             "MARKET_DATA_PROVIDER": "akshare",
+            "IFIND_ACCESS_TOKEN": "test-access-token",
             "IFIND_REFRESH_TOKEN": "test-refresh-token",
         }
     )
@@ -83,3 +93,38 @@ def test_selected_ifind_timeout_is_not_silently_routed_to_akshare(
         )
 
     assert transport.call_count == 2
+
+
+class RejectedTransport:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def post(self, url: str, **kwargs: Any) -> Any:
+        self.calls.append({"url": url, **kwargs})
+        return type("Response", (), {"status_code": 401})()
+
+
+def test_access_token_takes_precedence_without_refresh_fallback() -> None:
+    transport = RejectedTransport()
+    provider = get_market_data_provider(
+        env={
+            "MARKET_DATA_PROVIDER": "ifind",
+            "IFIND_ACCESS_TOKEN": "test-access-token",
+            "IFIND_REFRESH_TOKEN": "test-refresh-token",
+        },
+        ifind_transport=transport,
+    )
+
+    with pytest.raises(
+        MarketDataProviderAuthenticationError,
+        match="access token 已失效",
+    ):
+        provider.fetch_etf_history(
+            "510300",
+            start_date=date(2025, 1, 2),
+            end_date=date(2025, 1, 3),
+        )
+
+    assert len(transport.calls) == 1
+    assert transport.calls[0]["headers"]["access_token"] == "test-access-token"
+    assert "refresh_token" not in transport.calls[0]["headers"]

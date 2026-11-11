@@ -96,3 +96,15 @@ commission = max(abs(notional) × commission_rate, minimum_commission)
 - 每手数量；
 - 运行时间；
 - 代码或策略版本。
+
+现由 `BacktestResult.metadata` 和 `input_data` 保存这些信息。数据文件
+来源未知时 `source` 为 `null`，使用实际输入行情的 SHA-256 作为内容
+版本，不伪造导入版本。已有导入版本时保留版本号，并额外记录内容指纹。
+
+源码指纹覆盖 `src/quantlab` 的 Python 文件，因此未提交的源码修改也会
+改变版本；它不是 Git 提交号。输入快照只保留本次引擎使用的行情和信号。
+进程加载后若检测到源码变更，会要求重启后再回测，以免记录的磁盘源码
+版本与仍在内存中的旧实现不一致。
+
+页面每次主动运行自动保存记录；直接调用 Python API 时使用
+`save_backtest_run` 保存。详见[回测记录说明](backtest_records.md)。

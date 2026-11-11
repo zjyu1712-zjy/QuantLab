@@ -80,3 +80,8 @@ def get_research_storage_dir(project_root: str | Path) -> Path:
     """研究集合复用行情的本地/独立会话根，不新建共享临时目录。"""
     raw_dir, _ = get_market_storage_dirs(project_root)
     return raw_dir.parent.parent / "research_sets"
+
+
+def get_portfolio_storage_dir(project_root: str | Path) -> Path:
+    """组合档案与研究集合并列，沿用同一本地或独立临时会话根。"""
+    return get_research_storage_dir(project_root).parent / "portfolio_runs"

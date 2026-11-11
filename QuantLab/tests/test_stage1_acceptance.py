@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from quantlab.data import import_market_csv, load_trade_csv
+from quantlab.backtest import save_backtest_run
 from quantlab.ui import (
     build_market_performance_view,
     build_moving_average_backtest_view,
@@ -36,6 +37,8 @@ def test_stage1_complete_research_loop(tmp_path: Path) -> None:
         slippage_rate=0.0001,
         sell_tax_rate=0.0,
         lot_size=100,
+        data_source=imported.processed_path,
+        data_version=imported.version.version_id,
     )
     comparison = build_three_way_comparison_view(
         market_data,
@@ -48,6 +51,8 @@ def test_stage1_complete_research_loop(tmp_path: Path) -> None:
         slippage_rate=0.0001,
         sell_tax_rate=0.0,
         lot_size=100,
+        data_source=imported.processed_path,
+        data_version=imported.version.version_id,
     )
     trade_review = build_trade_review_view(
         market_data,
@@ -77,3 +82,9 @@ def test_stage1_complete_research_loop(tmp_path: Path) -> None:
     assert trade_review.symbol == imported.symbol
     assert len(trade_review.review.trade_alignment) == len(trade_data)
     assert trade_review.timing_summary["count"].sum() >= len(trade_data)
+    saved = save_backtest_run(
+        backtest.result.backtest, tmp_path / "backtests",
+        performance=backtest.result.performance,
+    )
+    assert saved.is_file()
+    assert backtest.result.backtest.metadata.data["version"] == imported.version.version_id

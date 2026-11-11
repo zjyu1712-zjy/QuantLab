@@ -26,6 +26,7 @@ from quantlab.data.market_service import (
 )
 from quantlab.data.providers import (
     MarketDataProvider,
+    MarketDataProviderAuthenticationError,
     MarketDataProviderError,
     MarketDataProviderNoDataError,
     get_market_data_provider,
@@ -189,6 +190,8 @@ def friendly_market_error(error: Exception) -> tuple[str, str]:
 
     if isinstance(error, MarketDataProviderNoDataError):
         return "未找到该 ETF 的行情数据，请检查代码或日期范围。", str(error)
+    if isinstance(error, MarketDataProviderAuthenticationError):
+        return "iFinD access token 已失效，请重新配置后重试。", str(error)
     if isinstance(error, MarketDataProviderError):
         return (
             "行情服务暂时无法连接，请稍后重试，或者使用文件上传方式导入数据。",

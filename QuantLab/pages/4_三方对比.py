@@ -22,6 +22,7 @@ from quantlab.ui import (  # noqa: E402
     load_uploaded_trade_csv,
     require_access,
 )
+from quantlab.ui.run_records import render_run_record  # noqa: E402
 
 
 RAW_MARKET_DIR, PROCESSED_MARKET_DIR = get_market_storage_dirs(PROJECT_ROOT)
@@ -46,8 +47,7 @@ def _load_cached_trade_upload(
     return load_uploaded_trade_csv(filename, content)
 
 
-@st.cache_data(show_spinner=False)
-def _run_cached_comparison(
+def _run_comparison(
     market_data: pd.DataFrame,
     trade_data: pd.DataFrame,
     short_window: int,
@@ -59,8 +59,10 @@ def _run_cached_comparison(
     sell_tax_rate: float,
     lot_size: int,
     annual_risk_free_rate: float,
+    data_source: str,
+    data_version: str,
 ):
-    """参数与数据未变化时复用三方比较结果。"""
+    """每次比较都记录两个模拟回测的实际运行身份。"""
     return build_three_way_comparison_view(
         market_data,
         trade_data,
@@ -73,6 +75,8 @@ def _run_cached_comparison(
         sell_tax_rate=sell_tax_rate,
         lot_size=lot_size,
         annual_risk_free_rate=annual_risk_free_rate,
+        data_source=data_source,
+        data_version=data_version,
     )
 
 
@@ -425,7 +429,7 @@ def render_comparison_page() -> None:
             uploaded_trade.getvalue(),
         )
         with st.spinner("正在统一口径并生成三方对比……"):
-            view = _run_cached_comparison(
+            view = _run_comparison(
                 market_data,
                 trade_data,
                 int(short_window),
@@ -437,6 +441,8 @@ def render_comparison_page() -> None:
                 float(sell_tax_percent) / 100,
                 int(lot_size),
                 float(risk_free_percent) / 100,
+                record.processed_path,
+                record.version_id,
             )
     except Exception as error:
         st.error(f"三方对比无法完成：{error}")
@@ -452,6 +458,14 @@ def render_comparison_page() -> None:
     )
     with st.expander("高级信息：本次比较数据"):
         st.write(f"数据版本：{record.version_id}")
+    for label, analysis in (
+        ("买入持有", view.comparison.buy_and_hold),
+        ("双均线策略", view.comparison.strategy),
+    ):
+        render_run_record(
+            analysis.backtest, analysis.performance,
+            RAW_MARKET_DIR.parent.parent / "backtests", label=label,
+        )
     _render_summary(view)
 
     st.subheader("三方资金曲线")

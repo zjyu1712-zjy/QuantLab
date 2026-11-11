@@ -48,7 +48,7 @@ esac
 def _run_configure(
     tmp_path: Path,
     *,
-    stored_token: str = "fake-refresh-token",
+    stored_token: str = "fake-access-token",
     system_name: str = "Darwin",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     fake_security, log_path = _write_fake_security(tmp_path)
@@ -86,9 +86,10 @@ def test_configure_uses_keychain_prompt_without_secret_in_argv_or_output(
 
     assert result.returncode == 0
     assert recorded_commands[0].split("\t")[-1] == "-w"
-    assert "fake-refresh-token" not in "\n".join(recorded_commands)
-    assert "fake-refresh-token" not in result.stdout
-    assert "fake-refresh-token" not in result.stderr
+    assert any("QuantLab-iFinD-AccessToken" in command for command in recorded_commands)
+    assert "fake-access-token" not in "\n".join(recorded_commands)
+    assert "fake-access-token" not in result.stdout
+    assert "fake-access-token" not in result.stderr
 
 
 def test_configure_rejects_empty_keychain_value_and_removes_it(
@@ -119,13 +120,14 @@ def _write_fake_python(tmp_path: Path) -> tuple[Path, Path]:
     fake_python.write_text(
         """#!/bin/bash
 set -u
-if [[ "${IFIND_REFRESH_TOKEN:-}" == "${EXPECTED_FAKE_TOKEN:-}" ]]; then
+if [[ "${IFIND_ACCESS_TOKEN:-}" == "${EXPECTED_FAKE_TOKEN:-}" ]]; then
     printf 'token_matches=true\\n' > "$FAKE_PYTHON_STATE"
 else
     printf 'token_matches=false\\n' > "$FAKE_PYTHON_STATE"
 fi
 printf 'provider=%s\\n' "${MARKET_DATA_PROVIDER:-}" >> "$FAKE_PYTHON_STATE"
 printf 'pythonpath=%s\\n' "${PYTHONPATH:-}" >> "$FAKE_PYTHON_STATE"
+printf 'refresh_token_set=%s\\n' "${IFIND_REFRESH_TOKEN:+true}" >> "$FAKE_PYTHON_STATE"
 printf 'argv=' >> "$FAKE_PYTHON_STATE"
 printf '%s\\t' "$@" >> "$FAKE_PYTHON_STATE"
 printf '\\n' >> "$FAKE_PYTHON_STATE"
@@ -139,7 +141,7 @@ printf '\\n' >> "$FAKE_PYTHON_STATE"
 def _run_launcher(
     tmp_path: Path,
     *,
-    fake_token: str = "fake-refresh-token",
+    fake_token: str = "fake-access-token",
     keychain_exit_code: int = 0,
     create_project_python: bool = True,
     system_name: str = "Darwin",
@@ -160,6 +162,7 @@ def _run_launcher(
             "QUANTLAB_PYTHON_BIN": str(fake_python),
             "QUANTLAB_SECURITY_BIN": str(fake_security),
             "QUANTLAB_UNAME_FOR_TESTS": system_name,
+            "IFIND_REFRESH_TOKEN": "legacy-refresh-token",
         }
     )
     result = subprocess.run(
@@ -191,10 +194,11 @@ def test_launcher_sets_ifind_child_environment_without_printing_token(
         "token_matches": "true",
         "provider": "ifind",
         "pythonpath": "src",
+        "refresh_token_set": "",
         "argv": "-m\tstreamlit\trun\tapp.py\t",
     }
-    assert "fake-refresh-token" not in result.stdout
-    assert "fake-refresh-token" not in result.stderr
+    assert "fake-access-token" not in result.stdout
+    assert "fake-access-token" not in result.stderr
 
 
 def test_launcher_explains_missing_keychain_credential(tmp_path: Path) -> None:

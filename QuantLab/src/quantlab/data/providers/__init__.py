@@ -49,15 +49,26 @@ def get_market_data_provider(
     if mode not in VALID_PROVIDER_MODES:
         raise ValueError("MARKET_DATA_PROVIDER 必须是 auto、akshare 或 ifind")
 
+    access_token = settings.get("IFIND_ACCESS_TOKEN", "").strip()
     refresh_token = settings.get("IFIND_REFRESH_TOKEN", "").strip()
-    if mode == "akshare" or (mode == "auto" and not refresh_token):
+    has_ifind_credential = bool(access_token or refresh_token)
+    if mode == "akshare" or (mode == "auto" and not has_ifind_credential):
         return AkShareETFProvider()
-    if not refresh_token:
+    if not has_ifind_credential:
         raise MarketDataProviderUnavailable("iFinD 行情服务尚未配置")
 
-    return IFindETFProvider(
-        IFindQuantAPIClient(refresh_token, transport=ifind_transport)
+    client = (
+        IFindQuantAPIClient(
+            access_token=access_token,
+            transport=ifind_transport,
+        )
+        if access_token
+        else IFindQuantAPIClient(
+            refresh_token,
+            transport=ifind_transport,
+        )
     )
+    return IFindETFProvider(client)
 
 
 __all__ = [

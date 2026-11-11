@@ -45,7 +45,8 @@ def test_hand_calculation_metadata_and_default_registry():
     left, right = create_default_registry(), create_default_registry()
     assert left is not right
     assert set(left.names()) == set(right.names()) == {
-        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60",
+        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60", "bias_20",
+        "max_drawdown_20", "volume_change_20", "trend_efficiency_20",
     }
     assert left.get("momentum_20") is Momentum20Factor
     assert FactorRegistry().names() == ()
@@ -59,7 +60,8 @@ def test_default_registries_do_not_share_mutable_registrations():
     left, right = create_default_registry(), create_default_registry()
     left.register(TestOnlyFactor)
     assert set(left.names()) == {
-        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60", "test_only",
+        "momentum_20", "momentum_60", "momentum_120", "volatility_20", "volatility_60", "bias_20", "test_only",
+        "max_drawdown_20", "volume_change_20", "trend_efficiency_20",
     }
     assert "test_only" not in right.names()
     assert set(right.names()) == set(create_default_registry().names())

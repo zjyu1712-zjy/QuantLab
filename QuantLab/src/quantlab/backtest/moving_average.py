@@ -34,6 +34,8 @@ def run_dual_moving_average_backtest(
     *,
     backtest_config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
     analytics_config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> MovingAverageBacktestResult:
     """生成双均线信号，并按统一规则完成回测和绩效分析。"""
     signals = generate_dual_moving_average_signals(
@@ -45,6 +47,10 @@ def run_dual_moving_average_backtest(
         signals,
         backtest_config=backtest_config,
         analytics_config=analytics_config,
+        strategy_name="dual_moving_average",
+        strategy_parameters={"short_window": short_window, "long_window": long_window},
+        data_source=data_source,
+        data_version=data_version,
     )
 
     return MovingAverageBacktestResult(

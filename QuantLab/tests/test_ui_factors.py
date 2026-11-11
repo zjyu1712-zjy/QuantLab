@@ -359,6 +359,9 @@ def test_unavailable_snapshot_or_changed_scope_hides_cached_result(saved_factory
     _, make = saved_factory
     saved, _, _ = make()
     page = calculate(new_page(), saved.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert "factor_selection_n" in page.session_state.filtered_state
+    assert selection_tables(page)
     if damage == "corrupt":
         (saved.directory / "coverage.csv").write_text("broken", encoding="utf-8")
     elif damage == "removed":
@@ -369,6 +372,7 @@ def test_unavailable_snapshot_or_changed_scope_hides_cached_result(saved_factory
     assert not page.exception
     assert page.session_state.filtered_state.get("factor_result") is None
     assert not page.dataframe and not page.get("vega_lite_chart")
+    assert "factor_selection_n" not in page.session_state.filtered_state
 
 
 def test_failed_recalculation_clears_old_success(saved_factory, monkeypatch):
@@ -377,6 +381,9 @@ def test_failed_recalculation_clears_old_success(saved_factory, monkeypatch):
     _, make = saved_factory
     saved, _, _ = make()
     page = calculate(new_page(), saved.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert "factor_selection_n" in page.session_state.filtered_state
+    assert selection_tables(page)
 
     def fail(*args, **kwargs):
         raise ValueError("synthetic-calculation-failure")
@@ -386,6 +393,7 @@ def test_failed_recalculation_clears_old_success(saved_factory, monkeypatch):
     assert not page.exception and page.error
     assert page.session_state.filtered_state.get("factor_result") is None
     assert not page.dataframe and not page.get("vega_lite_chart")
+    assert "factor_selection_n" not in page.session_state.filtered_state
 
 
 def test_same_id_with_new_valid_content_requires_recalculation(saved_factory):
@@ -393,6 +401,9 @@ def test_same_id_with_new_valid_content_requires_recalculation(saved_factory):
     first, _, _ = make()
     other, changed, _ = make(length=10)
     page = calculate(new_page(), first.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert "factor_selection_n" in page.session_state.filtered_state
+    assert selection_tables(page)
     # 只替换临时合成快照，模拟外部替换文件但集合 ID 保持不变。
     manifest = json.loads((other.directory / "manifest.json").read_text())
     manifest.update(set_id=first.set_id, name=first.name, created_at=first.created_at)
@@ -404,6 +415,7 @@ def test_same_id_with_new_valid_content_requires_recalculation(saved_factory):
     assert not page.exception
     assert page.session_state.filtered_state.get("factor_result") is None
     assert not page.dataframe
+    assert "factor_selection_n" not in page.session_state.filtered_state
     calculate(page, first.set_id)
     assert page.dataframe[0].value["20 期动量"].eq("—").all()
 
@@ -604,3 +616,168 @@ def test_page_rank_state_resets_across_factors_and_sets_and_explains_equal_value
     page.selectbox(key="factor_set_id").set_value(other.set_id).run()
     assert not page.dataframe
     assert "factor_rank_direction" not in page.session_state.filtered_state
+
+
+@pytest.mark.parametrize("ascending, n, codes, tied", [
+    (False, 1, ["510300"], True),
+    (False, 2, ["510300", "510500"], False),
+    (False, 3, ["510300", "510500", "159915"], False),
+    (False, 4, ["510300", "510500", "159915", "512000"], False),
+    (True, 3, ["512000", "159915", "510300"], True),
+    (False, 5, [], False),
+])
+def test_top_n_exact_seats_ties_invalid_and_unrounded_weights(saved_factory, ascending, n, codes, tied):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "top_n_factor_preview"), "尚未实现前 N 只配置预览"
+    _, make = saved_factory
+    _, source, _ = make()
+    result = run_research_factor(source)
+    when = result.calendar.dates[-1]
+    # 并列名次不是席位数；不得把 rank <= N 当成前 N 只。
+    rows = pd.DataFrame({
+        "date": pd.to_datetime([when] * 5),
+        "symbol": ["513000", "510500", "159915", "512000", "510300"],
+        "factor_value": [np.nan, .1, 0.0, -.2, .1],
+        "status": ["missing_window", "valid", "valid", "valid", "valid"],
+        "is_valid": [False, True, True, True, True],
+    }, index=[7, 7, 9, 12, 15])
+    result = replace(result, data=rows)
+    before = deepcopy(result.data)
+    preview = display.top_n_factor_preview(result, when, n, ascending=ascending)
+    assert preview.valid_count == 4
+    assert preview.cutoff_tie is tied
+    assert preview.table["ETF 代码"].tolist() == codes
+    if codes:
+        assert preview.table["目标权重"].tolist() == pytest.approx([1 / n] * n)
+        assert preview.table["目标权重"].sum() == pytest.approx(1.0)
+        preview.table.loc[0, "目标权重"] = .7
+    else:
+        assert preview.table.empty  # 不足时不能生成部分持仓或补现金方案。
+    pd.testing.assert_frame_equal(result.data, before)
+
+
+def test_top_n_uses_raw_values_and_only_the_selected_day(saved_factory):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "top_n_factor_preview"), "尚未实现前 N 只配置预览"
+    _, make = saved_factory
+    _, source, _ = make(gap=True)
+    result = run_research_factor(source)
+    when = result.calendar.dates[-1]
+    result.data.loc[result.data.date.dt.date.eq(when), "factor_value"] = [.100001, .100002]
+    preview = display.top_n_factor_preview(result, when, 1)
+    assert preview.table["ETF 代码"].tolist() == ["510300"]
+    assert preview.table["20 期动量"].tolist() == ["10.00%"]
+    assert not preview.cutoff_tie  # 显示百分比相同不是原始值相同。
+    gap = display.top_n_factor_preview(result, result.calendar.dates[25], 2)
+    assert gap.valid_count == 1 and gap.table.empty
+    warmup = display.top_n_factor_preview(result, result.calendar.dates[0], 1)
+    assert warmup.valid_count == 0 and warmup.table.empty
+    with pytest.raises(ValueError, match="日期"):
+        display.top_n_factor_preview(result, date(2020, 1, 1), 1)
+
+
+@pytest.mark.parametrize("n", [0, -1, True, 1.5, "2", None])
+def test_top_n_rejects_non_positive_integer_counts(saved_factory, n):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "top_n_factor_preview"), "尚未实现前 N 只配置预览"
+    _, make = saved_factory
+    _, source, _ = make()
+    result = run_research_factor(source)
+    with pytest.raises(ValueError, match="正整数"):
+        display.top_n_factor_preview(result, result.calendar.dates[-1], n)
+
+
+@pytest.mark.parametrize("name, code", [
+    ("momentum_20", "510300"), ("momentum_60", "510300"),
+    ("momentum_120", "510300"), ("volatility_20", "159915"),
+    ("volatility_60", "159915"),
+])
+def test_top_n_defaults_to_factor_direction(saved_factory, name, code):
+    from quantlab.ui import factors as display
+
+    assert hasattr(display, "top_n_factor_preview"), "尚未实现前 N 只配置预览"
+    _, make = saved_factory
+    _, source, _ = make(length=160, oscillating=True)
+    result = run_research_factor(source, name)
+    when = result.calendar.dates[-1]
+    result.data.loc[result.data.date.dt.date.eq(when), "factor_value"] = [0.0, .1]
+    preview = display.top_n_factor_preview(result, when, 1)
+    assert preview.table["ETF 代码"].tolist() == [code]
+    assert preview.table["目标权重"].tolist() == [1.0]
+
+
+def selection_tables(page):
+    return [item.value for item in page.dataframe if "目标权重" in item.value.columns]
+
+
+def test_page_top_n_updates_filters_without_truncating_history(saved_factory):
+    _, make = saved_factory
+    saved, source, _ = make(gap=True)
+    before = {p.name: p.read_bytes() for p in saved.directory.iterdir()}
+    page = calculate(new_page(), saved.set_id)
+    assert not selection_tables(page)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert "factor_selection_n" in page.session_state.filtered_state, "页面尚未支持前 N 只预览"
+    assert selection_tables(page)[0]["目标权重"].tolist() == [.5, .5]
+    page.number_input(key="factor_selection_n").set_value(1).run()
+    assert selection_tables(page)[0]["ETF 代码"].tolist() == ["510300"]
+    assert selection_tables(page)[0]["目标权重"].tolist() == [1.0]
+    page.selectbox(key="factor_rank_direction").set_value("ascending").run()
+    assert selection_tables(page)[0]["ETF 代码"].tolist() == ["159915"]
+    assert page.selectbox(key="factor_view_symbol").options == ["159915", "510300"]
+    # 未入选 ETF 仍能查看整个快照历史。
+    page.selectbox(key="factor_view_symbol").set_value("510300").run()
+    history = next(d.value for d in page.dataframe if "日期" in d.value.columns)
+    assert len(history) == 50
+    assert len(page.get("vega_lite_chart")) == 1
+    page.number_input(key="factor_selection_n").set_value(2).run()
+    page.selectbox(key="factor_view_date").set_value(source.alignment.calendar.dates[25]).run()
+    assert not selection_tables(page)
+    assert any("未生成配置" in item.value and "1" in item.value and "2" in item.value for item in page.info)
+    page.number_input(key="factor_selection_n").set_value(1).run()
+    assert selection_tables(page)[0]["ETF 代码"].tolist() == ["159915"]
+    page.selectbox(key="factor_view_date").set_value(source.alignment.calendar.dates[0]).run()
+    assert not selection_tables(page)
+    assert any("未生成配置" in item.value for item in page.info)
+    assert len(page.get("vega_lite_chart")) == 1
+    page.radio(key="factor_daily_order").set_value("ETF 代码").run()
+    assert not selection_tables(page) and "名次" not in page.dataframe[0].value
+    assert {p.name: p.read_bytes() for p in saved.directory.iterdir()} == before
+    assert not page.exception
+
+
+def test_page_top_n_boundary_tie_and_reset_on_new_research(saved_factory):
+    _, make = saved_factory
+    saved, _, _ = make(length=100, oscillating=True)
+    other, _, _ = make(length=10)
+    page = calculate(new_page(), saved.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert "factor_selection_n" in page.session_state.filtered_state, "页面尚未支持前 N 只预览"
+    page.number_input(key="factor_selection_n").set_value(1).run()
+    assert selection_tables(page)[0]["ETF 代码"].tolist() == ["159915"]
+    assert any("边界" in w.value and "代码" in w.value for w in page.warning)
+    page.number_input(key="factor_selection_n").set_value(2).run()
+    assert not any("边界" in w.value for w in page.warning)
+    page.number_input(key="factor_selection_n").set_value(1).run()
+    page.button(key="factor_calculate").click().run()
+    assert "factor_selection_n" not in page.session_state.filtered_state
+    assert not selection_tables(page)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert page.number_input(key="factor_selection_n").value == 2
+    page.selectbox(key="factor_name").set_value("volatility_20").run()
+    assert "factor_selection_n" not in page.session_state.filtered_state
+    assert not selection_tables(page)
+    calculate(page, saved.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    page.number_input(key="factor_selection_n").set_value(1).run()
+    assert selection_tables(page)[0]["ETF 代码"].tolist() == ["159915"]
+    page.selectbox(key="factor_set_id").set_value(other.set_id).run()
+    assert "factor_selection_n" not in page.session_state.filtered_state
+    assert not selection_tables(page)
+    calculate(page, other.set_id)
+    page.radio(key="factor_daily_order").set_value("因子排名").run()
+    assert not selection_tables(page)
+    assert not page.exception

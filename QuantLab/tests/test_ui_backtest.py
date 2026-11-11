@@ -70,3 +70,14 @@ def test_build_moving_average_backtest_view_applies_costs() -> None:
 
     assert view.total_costs > 0
     assert view.final_equity < 1000.0
+
+
+def test_backtest_view_preserves_selected_dataset_reference() -> None:
+    view = build_moving_average_backtest_view(
+        make_market_data(), short_window=2, long_window=3,
+        initial_cash=1000, commission_rate=0, minimum_commission=0,
+        slippage_rate=0, sell_tax_rate=0, lot_size=10,
+        data_source="market/selected.parquet", data_version="selected-version",
+    )
+    assert view.result.backtest.metadata.data["source"] == "market/selected.parquet"
+    assert view.result.backtest.metadata.data["version"] == "selected-version"

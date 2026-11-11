@@ -45,12 +45,17 @@ class FactorRegistry:
 
 
 def create_default_registry() -> FactorRegistry:
-    """显式登记固定周期动量与波动率，不运行计算或共享注册状态。"""
+    """显式登记固定周期因子，不运行计算或共享注册状态。"""
+    from quantlab.factors.bias import Bias20Factor
+    from quantlab.factors.drawdown import MaxDrawdown20Factor
     from quantlab.factors.momentum import Momentum20Factor, Momentum60Factor, Momentum120Factor
     from quantlab.factors.volatility import Volatility20Factor, Volatility60Factor
+    from quantlab.factors.volume import VolumeChange20Factor
+    from quantlab.factors.trend import TrendEfficiency20Factor
 
     registry = FactorRegistry()
     for factor_type in (Momentum20Factor, Momentum60Factor, Momentum120Factor,
-                        Volatility20Factor, Volatility60Factor):
+                        Volatility20Factor, Volatility60Factor, Bias20Factor, MaxDrawdown20Factor,
+                        VolumeChange20Factor, TrendEfficiency20Factor):
         registry.register(factor_type)
     return registry

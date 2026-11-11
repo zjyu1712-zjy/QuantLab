@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SERVICE="QuantLab-iFinD"
+SERVICE="QuantLab-iFinD-AccessToken"
 ACCOUNT="$(id -un)"
 SECURITY_BIN="${QUANTLAB_SECURITY_BIN:-/usr/bin/security}"
 SYSTEM_NAME="${QUANTLAB_UNAME_FOR_TESTS:-$(uname -s)}"
@@ -24,7 +24,8 @@ if ! token="$("$SECURITY_BIN" find-generic-password -a "$ACCOUNT" -s "$SERVICE" 
 fi
 
 cd "$SCRIPT_DIR"
-export IFIND_REFRESH_TOKEN="$token"
+export IFIND_ACCESS_TOKEN="$token"
+unset IFIND_REFRESH_TOKEN
 export MARKET_DATA_PROVIDER="ifind"
 export PYTHONPATH="src"
 unset token

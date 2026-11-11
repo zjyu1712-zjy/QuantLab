@@ -41,7 +41,7 @@
 
 ## 工作目录、基线与边界
 
-项目目录：`/Users/zhoujiayu/Documents/量化/QuantLab`；Git 根目录在其上一级。
+项目目录：`<project-root>/QuantLab`；Git 根目录在其上一级。
 以下文件路径相对项目目录，命令在项目目录运行。用户已选用当前目录，
 本计划不新建工作树、不切分支、不推送或创建 PR。
 

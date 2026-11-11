@@ -44,6 +44,8 @@ def build_three_way_comparison_view(
     lot_size: int,
     annual_risk_free_rate: float = 0.0,
     periods_per_year: int = 252,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> ThreeWayComparisonView:
     """按统一口径运行三方比较并整理界面数据。"""
     comparison = compare_three_approaches(
@@ -51,6 +53,8 @@ def build_three_way_comparison_view(
         trade_data,
         short_window,
         long_window,
+        data_source=data_source,
+        data_version=data_version,
         backtest_config=BacktestConfig(
             initial_cash=initial_cash,
             commission_rate=commission_rate,

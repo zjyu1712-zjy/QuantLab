@@ -13,5 +13,7 @@ __pycache__/
 data/raw/
 data/processed/
 data/research_sets/
+data/backtests/
+data/portfolio_runs/
 
 logs/

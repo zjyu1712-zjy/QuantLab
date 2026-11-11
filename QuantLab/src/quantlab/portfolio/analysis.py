@@ -124,6 +124,15 @@ def analyze_portfolio_result(
     """从全部研究日期计算指标，返回独立副本，不改原运行身份或已有公式。"""
     periods, risk_free_rate = _checked_config(analytics_config)
     backtest, equity = _checked_equity(result)
+    performance = _performance_from_equity(equity, periods=periods, risk_free_rate=risk_free_rate)
+    backtest.metadata["analytics_config"] = {
+        "periods_per_year": periods, "annual_risk_free_rate": risk_free_rate,
+    }
+    return PortfolioAnalysis(backtest=backtest, performance=performance)
+
+
+def _performance_from_equity(equity: pd.Series, *, periods: int, risk_free_rate: float) -> PortfolioPerformance:
+    """仅供已验证的策略或刚完成的基准引擎调用；不放宽公开结果校验边界。"""
     net_value = _calculate("净值", calculate_net_value, equity, positive=True)
     drawdown = _calculate("回撤", calculate_drawdown_curve, net_value)
     max_drawdown = _calculate("最大回撤", calculate_max_drawdown, net_value)
@@ -148,12 +157,8 @@ def analyze_portfolio_result(
         else:
             sharpe = _calculate("夏普比率", calculate_sharpe_ratio, daily_returns,
                                 periods_per_year=periods, annual_risk_free_rate=risk_free_rate)
-    backtest.metadata["analytics_config"] = {
-        "periods_per_year": periods, "annual_risk_free_rate": risk_free_rate,
-    }
-    performance = PortfolioPerformance(
+    return PortfolioPerformance(
         daily_returns=daily_returns, net_value=net_value, drawdown=drawdown,
         cumulative_return=total, annualized_return=annualized, annualized_volatility=volatility,
         max_drawdown=max_drawdown, sharpe_ratio=sharpe, unavailable_reasons=reasons,
     )
-    return PortfolioAnalysis(backtest=backtest, performance=performance)

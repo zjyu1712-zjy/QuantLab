@@ -14,11 +14,11 @@ from quantlab.data.providers import get_market_data_provider
 
 
 RUN_REAL = os.getenv("RUN_IFIND_INTEGRATION") == "1"
-HAS_TOKEN = bool(os.getenv("IFIND_REFRESH_TOKEN", "").strip())
+HAS_TOKEN = bool(os.getenv("IFIND_ACCESS_TOKEN", "").strip())
 
 pytestmark = pytest.mark.skipif(
     not (RUN_REAL and HAS_TOKEN),
-    reason="set RUN_IFIND_INTEGRATION=1 and IFIND_REFRESH_TOKEN to run",
+    reason="set RUN_IFIND_INTEGRATION=1 and IFIND_ACCESS_TOKEN to run",
 )
 
 
@@ -27,7 +27,7 @@ def test_ifind_real_etf_daily_history() -> None:
     provider = get_market_data_provider(
         env={
             "MARKET_DATA_PROVIDER": "ifind",
-            "IFIND_REFRESH_TOKEN": os.environ["IFIND_REFRESH_TOKEN"],
+            "IFIND_ACCESS_TOKEN": os.environ["IFIND_ACCESS_TOKEN"],
         }
     )
     end = date.today() - timedelta(days=1)

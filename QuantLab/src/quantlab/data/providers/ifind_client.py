@@ -50,8 +50,9 @@ class IFindQuantAPIClient:
 
     def __init__(
         self,
-        refresh_token: str,
+        refresh_token: str | None = None,
         *,
+        access_token: str | None = None,
         transport: HTTPTransport | None = None,
         timeout_seconds: float = 20.0,
         max_attempts: int = 2,
@@ -59,8 +60,10 @@ class IFindQuantAPIClient:
         clock: Callable[[], datetime] | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        if not refresh_token.strip():
-            raise ValueError("刷新令牌不能为空")
+        normalized_refresh_token = (refresh_token or "").strip()
+        normalized_access_token = (access_token or "").strip()
+        if not normalized_refresh_token and not normalized_access_token:
+            raise ValueError("iFinD 访问凭据不能为空")
         if (
             isinstance(timeout_seconds, bool)
             or not isinstance(timeout_seconds, (int, float))
@@ -77,14 +80,15 @@ class IFindQuantAPIClient:
         if retry_delay_seconds < 0:
             raise ValueError("重试等待时间不能为负数")
 
-        self._refresh_token = refresh_token
+        self._refresh_token = normalized_refresh_token or None
+        self._direct_access_token = bool(normalized_access_token)
         self._transport = transport if transport is not None else requests.Session()
         self._timeout_seconds = timeout_seconds
         self._max_attempts = max_attempts
         self._retry_delay_seconds = retry_delay_seconds
         self._clock = clock or (lambda: datetime.now(UTC))
         self._sleep = sleep
-        self._access_token: str | None = None
+        self._access_token: str | None = normalized_access_token or None
         self._access_token_expires_at: datetime | None = None
 
     def post_json(
@@ -92,7 +96,7 @@ class IFindQuantAPIClient:
         path: str,
         payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """POST a JSON request, renewing an access token once if it is rejected."""
+        """POST JSON; refresh-mode renews once while direct mode fails clearly."""
         for auth_attempt in range(2):
             response = self._post(
                 path,
@@ -105,6 +109,10 @@ class IFindQuantAPIClient:
             )
             if response.status_code not in {401, 403}:
                 return self._response_json(response)
+            if self._direct_access_token:
+                raise MarketDataProviderAuthenticationError(
+                    "iFinD access token 已失效，请重新配置。"
+                )
             self._invalidate_access_token()
             if auth_attempt == 1:
                 raise MarketDataProviderAuthenticationError(
@@ -116,6 +124,11 @@ class IFindQuantAPIClient:
     def _get_access_token(self) -> str:
         if self._has_valid_access_token():
             return self._access_token  # type: ignore[return-value]
+
+        if self._refresh_token is None:
+            raise MarketDataProviderAuthenticationError(
+                "iFinD access token 已失效，请重新配置。"
+            )
 
         response = self._post(
             ACCESS_TOKEN_PATH,
@@ -150,6 +163,8 @@ class IFindQuantAPIClient:
         return access_token
 
     def _has_valid_access_token(self) -> bool:
+        if self._direct_access_token:
+            return self._access_token is not None
         return (
             self._access_token is not None
             and self._access_token_expires_at is not None

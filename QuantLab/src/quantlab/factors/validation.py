@@ -1,4 +1,4 @@
-"""价格类因子共用的单 ETF 输入检查；不排序、填充或转换数据。"""
+"""因子共用的单 ETF 输入检查；价格、成交量各自校验，不修补数据。"""
 
 import re
 
@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 
 
-def validate_price_input(market_data: pd.DataFrame) -> None:
-    """检查规范日线及观测标记，不改变调用方的表格。"""
+def _validate_observation_input(market_data: pd.DataFrame, value_field: str) -> None:
+    """核对共享的日期、代码及观测标记，数值条件交给各字段检查。"""
     if not isinstance(market_data, pd.DataFrame) or market_data.empty:
         raise ValueError("因子行情输入必须为非空数据表")
     if not market_data.columns.is_unique:
         raise ValueError("因子行情输入不能有重复字段")
-    required = ("date", "symbol", "close", "has_observation")
+    required = ("date", "symbol", value_field, "has_observation")
     missing = [field for field in required if field not in market_data.columns]
     if missing:
         raise ValueError(f"因子行情输入缺少字段：{', '.join(missing)}")
@@ -36,6 +36,12 @@ def validate_price_input(market_data: pd.DataFrame) -> None:
     observed = market_data["has_observation"]
     if not pd.api.types.is_bool_dtype(observed.dtype) or observed.isna().any():
         raise ValueError("观测标记必须为无空值布尔列")
+
+
+def validate_price_input(market_data: pd.DataFrame) -> None:
+    """保持价格因子的正价契约，不检查其不依赖的成交量。"""
+    _validate_observation_input(market_data, "close")
+    observed = market_data["has_observation"]
     close = market_data["close"]
     if close.dtype != np.dtype("float64"):
         raise ValueError("收盘价必须保持规范 float64 类型")
@@ -44,3 +50,17 @@ def validate_price_input(market_data: pd.DataFrame) -> None:
         raise ValueError("观测行收盘价必须为有限正数")
     if not close.loc[~observed].isna().all():
         raise ValueError("缺失行收盘价必须为 NaN，不能填充")
+
+
+def validate_volume_input(market_data: pd.DataFrame) -> None:
+    """成交量允许真实零值；缺失行仍必须是 NaN，不要求额外的价格字段。"""
+    _validate_observation_input(market_data, "volume")
+    observed = market_data["has_observation"]
+    volume = market_data["volume"]
+    if volume.dtype != np.dtype("float64"):
+        raise ValueError("成交量必须保持规范 float64 类型")
+    present = volume.loc[observed].to_numpy(dtype="float64")
+    if not np.isfinite(present).all() or (present < 0).any():
+        raise ValueError("观测行成交量必须为有限非负数")
+    if not volume.loc[~observed].isna().all():
+        raise ValueError("缺失行成交量必须为 NaN，不能填充")

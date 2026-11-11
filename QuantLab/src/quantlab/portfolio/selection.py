@@ -28,7 +28,10 @@ def _checked_frame(result: FactorRunResult) -> tuple[pd.DataFrame, tuple[date, .
         _invalid("因子结果缺少有效定义")
     if definition.availability != "after_close":
         _invalid("组合调仓只支持收盘后可用的因子")
-    if definition.direction not in ("higher_is_stronger", "higher_is_more_volatile"):
+    if definition.direction not in (
+        "higher_is_stronger", "higher_is_more_volatile", "higher_is_more_above_ma",
+        "higher_is_less_drawdown", "higher_is_more_volume", "higher_is_more_upward_efficient",
+    ):
         _invalid("未知因子方向，不能猜测排序规则")
 
     axis = result.calendar

@@ -68,12 +68,16 @@ def compare_three_approaches(
     *,
     backtest_config: BacktestConfig = DEFAULT_BACKTEST_CONFIG,
     analytics_config: AnalyticsConfig = DEFAULT_ANALYTICS_CONFIG,
+    data_source: str | None = None,
+    data_version: str | None = None,
 ) -> ThreeWayComparison:
     """使用相同资金、行情区间和指标定义比较三种投资路径。"""
     buy_and_hold = run_buy_and_hold(
         market_data,
         backtest_config=backtest_config,
         analytics_config=analytics_config,
+        data_source=data_source,
+        data_version=data_version,
     )
     strategy = run_dual_moving_average_backtest(
         market_data,
@@ -81,6 +85,8 @@ def compare_three_approaches(
         long_window,
         backtest_config=backtest_config,
         analytics_config=analytics_config,
+        data_source=data_source,
+        data_version=data_version,
     )
     personal = analyze_trades(
         market_data,
